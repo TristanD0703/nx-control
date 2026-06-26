@@ -65,4 +65,4 @@ void reset_controller(ControllerState_t *controller);
 void update_controller(ControllerState_t *controller);
 
 
-JoystickState_t serialize_controller_state(ControllerState_t *controller);
+void serialize_controller_state(ControllerState_t *controller, JoystickState_t *buffer);

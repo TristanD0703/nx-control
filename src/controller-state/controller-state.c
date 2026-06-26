@@ -1,5 +1,5 @@
-#include "controller-state.h"
 #include <string.h>
+#include "controller-state.h"
 
 
 /**
@@ -67,6 +67,6 @@ void update_controller(ControllerState_t *controller) {
 }
 
 
-JoystickState_t serialize_controller_state(ControllerState_t *controller) {
-  return controller->curr_state;
+void serialize_controller_state(ControllerState_t *controller, JoystickState_t *buffer) {
+  *buffer = controller->curr_state;
 }
