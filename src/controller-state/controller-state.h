@@ -1,6 +1,9 @@
 #pragma once
 
+#include "freertos/idf_additions.h"
 #include <stdint.h>
+
+#define MAX_TIMER_COUNT 20
 
 typedef enum {
 	SWITCH_Y       = 0x01,
@@ -37,6 +40,21 @@ typedef enum {
    STICK_MAX        = 255,
 } JoystickDirectionPositions_t;
 
+typedef enum {
+    BUTTON,
+    HAT,
+    LSTICK,
+    RSTICK,
+} JoystickOperation_t;
+
+typedef struct {
+    JoystickOperation_t op;
+    uint16_t value_x;
+    uint16_t value_y; // Only defined if op is L/RSTICK
+    uint32_t duration_ms;
+    uint8_t timer_index;
+} JoystickButtonState_t;
+
 typedef struct {
 	uint16_t Button; // 16 buttons; see JoystickButtons_t for bit mapping
 	uint8_t  HAT;    // HAT switch; one nibble w/ unused nibble
@@ -49,21 +67,30 @@ typedef struct {
 
 typedef struct {
     JoystickState_t curr_state;
+    TimerHandle_t timer_metadata[MAX_TIMER_COUNT];
 } ControllerState_t;
 
 void init_controller(ControllerState_t *controller);
 
-void tap_hat(ControllerState_t *controller, JoystickHatState_t hat);
-void tap_button(ControllerState_t *controller, JoystickButton_t button);
+void press_button(
+  ControllerState_t *controller, 
+  JoystickButtonState_t *button
+);
 
-void hold_button_combo(ControllerState_t *controller, JoystickButton_t *buttons, uint8_t buttons_len, uint32_t duration_ms);
-void hold_hat(ControllerState_t *controller, JoystickHatState_t hat, uint32_t duration_ms);
+void press_button_combo(
+  ControllerState_t *controller, 
+  const JoystickButtonState_t *buttons, 
+  const uint8_t buttons_len
+);
 
-void hold_left_stick_pos(ControllerState_t *controller, uint8_t position_x, uint8_t position_y, uint32_t duration_ms);
-void hold_right_stick_pos(ControllerState_t *controller, uint8_t position_x, uint8_t position_y, uint32_t duration_ms);
+int is_button_pressed(
+  const ControllerState_t *state, 
+  const JoystickButtonState_t *button
+);
 
 void reset_controller(ControllerState_t *controller);
-void update_controller(ControllerState_t *controller);
 
-
-void serialize_controller_state(ControllerState_t *controller, JoystickState_t *buffer);
+void serialize_controller_state(
+  const ControllerState_t *controller, 
+  JoystickState_t *buffer
+);

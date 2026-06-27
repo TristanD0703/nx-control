@@ -1,6 +1,20 @@
+#include <stdint.h>
 #include <string.h>
 #include "controller-state.h"
+#include "FreeRTOSConfig.h"
+#include "esp_log.h"
+#include "esp_log_level.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
+#include "freertos/timers.h"
 
+#define TAG "[controller-state]"
+
+typedef struct {
+    ControllerState_t *controller;
+    JoystickButtonState_t operation;
+    uint8_t timer_index;
+} TimerInfo_t;
 
 /**
  *  Initializes the controller such that no buttons are pressed
@@ -18,55 +32,196 @@ void init_controller(ControllerState_t *controller) {
     };
 }
 
+static void release_button(
+  ControllerState_t *controller, 
+  JoystickButtonState_t *operation
+) {
+    JoystickState_t *state = &controller->curr_state;
+    switch (operation->op) {
+        case LSTICK: {
+            state->LX = STICK_CENTER;
+            state->LY = STICK_CENTER;
+            break;
+        }
+        case RSTICK: {
+            state->RX = STICK_CENTER;
+            state->RY = STICK_CENTER;
+            break;
+        }
+        case HAT: {
+            ESP_LOGI(TAG, "RELEASE HAT");
+            state->HAT = HAT_CENTER; 
+            break;
+        }
+        case BUTTON: {
+            state->Button ^= operation->value_x;
+            break;
+        }
+    }
+}
+
+/*
+static void shutdown_timer(TimerInfo_t *info, TimerHandle_t handle)  {
+    if (!handle)
+        handle = info->controller->timer_metadata[info->timer_index];
+
+    xTimerStop(handle, 0);
+    info->controller->timer_metadata[info->timer_index] = NULL;
+    free(info);
+}
+*/
+
+static void scheduler_callback(TimerHandle_t timer) {
+    if (!timer)
+        return;
+
+    TimerInfo_t *info = (TimerInfo_t *)pvTimerGetTimerID(timer);
+
+    release_button(info->controller, &info->operation);
+}
+
+
+
+static int is_button_pressed_internal(
+  const JoystickState_t *state, 
+  const JoystickButtonState_t *button
+) {
+    switch (button->op) {
+        case LSTICK: {
+            return state->LX != STICK_CENTER || state->LY != STICK_CENTER;
+        }
+        case RSTICK: {
+            return state->RX != STICK_CENTER || state->RY != STICK_CENTER;
+        }
+        case HAT: {
+            return state->HAT != HAT_CENTER && (state->HAT & button->value_x) != 0 ;
+        }
+        case BUTTON: {
+            return (state->Button & button->value_x) != 0;
+        }
+        default: return 0;
+    }
+}
+
 /**
- *  Sets the D-Pad direction to the specified direction.
- *  Note: Only adjacent D-Pad buttons can be pressed as a combo 
- *  (ex: top and right)
-  */
-void tap_hat(ControllerState_t *controller, JoystickHatState_t hat) {
-    controller->curr_state.HAT = hat;
+ *  Checks if a button is pressed based on the desired button state.
+ *  If the operation is either L or R stick, returns true if the stick is not centered.
+ *  If the operation is HAT or D-Pad, returns true if it's in that exact configuration
+ *  (ex: It will not return desired state is HAT right and current state is top-right)
+ *  If op is button, returns true if that button is currently pressed
+*/
+int is_button_pressed(
+  const ControllerState_t *state, 
+  const JoystickButtonState_t *button
+) {
+    return is_button_pressed_internal(&state->curr_state, button);
 }
 
-void tap_button(ControllerState_t *controller, JoystickButton_t button) {
-    controller->curr_state.Button |= button;
+/**
+ * Finds an available storage space for the timer, allocates memory for 
+ * timer metadata, and starts the timer with callback
+ *
+ * returns > 0 if an operation failed
+ * 1: no timer space available
+ * 2: malloc failed
+ * 3: could not create timer
+ * 4: could not start timer
+*/
+static uint8_t create_button_timer(
+  ControllerState_t *controller, 
+  JoystickButtonState_t *button
+) {
+    uint8_t free_index = 0; 
+    for (; free_index < MAX_TIMER_COUNT; free_index++) {
+        if (controller->timer_metadata[free_index] == NULL)
+            break; 
+    }
+
+    if (free_index >= MAX_TIMER_COUNT)
+        return 1;
+
+    TimerInfo_t *info = malloc(sizeof(TimerInfo_t));
+    if (info == NULL)
+        return 2;
+
+    info->operation = *button;
+    info->controller = controller;
+    info->timer_index = free_index;
+
+    uint64_t durationTicks = pdMS_TO_TICKS(info->operation.duration_ms);
+    
+    TimerHandle_t curr_timer = xTimerCreate(
+        "Button Timer", 
+        durationTicks, 
+        pdFALSE, 
+        (void *)info, 
+        scheduler_callback
+    );
+
+    if (curr_timer == NULL)
+        return 3;
+
+    controller->timer_metadata[free_index] = curr_timer;
+    if (xTimerStart(curr_timer, 0) != pdPASS)
+        return 4;
+    return 0;
 }
 
-void hold_button_combo(
+static void set_controller_state(
   ControllerState_t *controller, 
-  JoystickButton_t *buttons, 
-  uint8_t buttons_len, 
-  uint32_t duration_ms
-);
+  JoystickButtonState_t *button
+) {
+    switch (button->op) {
+        case LSTICK: {
+            controller->curr_state.LX = button->value_x;
+            controller->curr_state.LY = button->value_y;
+            return;
+        }
+        case RSTICK: {
+            controller->curr_state.RX = button->value_x;
+            controller->curr_state.RY = button->value_y;
+            return;
+        }
+        case BUTTON: {
+          controller->curr_state.Button &= button->value_x;
+          return;
+        }
+        case HAT: {
+          controller->curr_state.HAT = button->value_x;
+        }
+    }
+}
 
-void hold_hat(
-  ControllerState_t *controller, 
-  JoystickHatState_t hat, 
-  uint32_t duration_ms
-);
+/*
+static void modify_timer_by_desired_state(const JoystickState_t *button) {
+}
+*/
 
-void hold_left_stick_pos(
-  ControllerState_t *controller, 
-  uint8_t position_x, 
-  uint8_t position_y, 
-  uint32_t duration_ms
-);
+void press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
+    int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
+   
+    if (!button_pressed) {
+        set_controller_state(controller, button);
+        create_button_timer(controller, button);
+        ESP_LOGI(TAG, "Pressed button");
+    } else {
+        ESP_LOGI(TAG, "Pressing button currently activated not supported yet.");
+    }
+}
 
-void hold_right_stick_pos(
+
+void press_button_combo(
   ControllerState_t *controller, 
-  uint8_t position_x, 
-  uint8_t position_y, 
-  uint32_t duration_ms
-);
+  const JoystickButtonState_t *buttons, 
+  const uint8_t buttons_len
+) {
+    
+}
 
 void reset_controller(ControllerState_t *controller) {
     init_controller(controller);
 }
 
-void update_controller(ControllerState_t *controller) {
-    init_controller(controller);
-}
-
-
-void serialize_controller_state(ControllerState_t *controller, JoystickState_t *buffer) {
+void serialize_controller_state(const ControllerState_t *controller, JoystickState_t *buffer) {
   *buffer = controller->curr_state;
 }

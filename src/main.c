@@ -1,14 +1,10 @@
-/*
- * SPDX-FileCopyrightText: 2022-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
-
+#include <stdint.h>
 #include <stdlib.h>
 #include "class/hid/hid.h"
 #include "device/usbd.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
@@ -17,30 +13,23 @@
 #include "controller-state/controller-state.h"
 #include "hid_descriptors.h"
 
+#undef configUSE_TIMERS
+#define configUSE_TIMERS 1
 
-#define APP_BUTTON (GPIO_NUM_0) // Use BOOT signal by default
-static const char *TAG = "example";
+#define APP_BUTTON (GPIO_NUM_0)
 
-/* Flag to indicate if the host has suspended the USB bus */
+static const char *TAG = "[nintendo-switch-usb-controller]";
+
 static bool suspended = false;
-/* Flag of possibility to Wakeup Host via Remote Wakeup feature */
 static bool wakeup_host = false;
 
 
-/********* TinyUSB HID callbacks ***************/
-
-// Invoked when received GET HID REPORT DESCRIPTOR request
-// Application return pointer to descriptor, whose contents must exist long enough for transfer to complete
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 {
-    // We use only one interface and one HID report descriptor, so we can ignore parameter 'instance'
     (void) instance;
     return desc_hid_report;
 }
 
-// Invoked when received GET_REPORT control request
-// Application must fill buffer report's content and return its length.
-// Return zero will cause the stack to STALL request
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer, uint16_t reqlen)
 {
     (void) instance;
@@ -65,12 +54,9 @@ void tud_hid_set_report_cb(
     (void) report_id;
 
     if (report_type == HID_REPORT_TYPE_OUTPUT && bufsize >= 8) {
-        // buffer[0..7] is the vendor-defined output report.
-        // You can ignore it unless the host expects rumble/LED behavior.
+        /** Receives data from the switch such as rumble commands */
     }
 }
-
-/********* Application ***************/
 
 void tud_suspend_cb(bool remote_wakeup_en)
 {
@@ -92,47 +78,53 @@ void tud_resume_cb(void)
 
 static void controller_task(void* arg)
 {
+    ControllerState_t controller;
+    init_controller(&controller);
+
+    JoystickButtonState_t buttons_to_press[] = {
+        {
+          .op = HAT,
+          .value_x = HAT_TOP,
+          .value_y = 0,
+          .duration_ms = 10
+        },
+        {
+          .op = HAT,
+          .value_x = HAT_RIGHT,
+          .value_y = 0,
+          .duration_ms = 10
+        },
+        {
+          .op = HAT,
+          .value_x = HAT_BOTTOM,
+          .value_y = 0,
+          .duration_ms = 10
+        },
+        {
+          .op = HAT,
+          .value_x = HAT_LEFT,
+          .value_y = 0,
+          .duration_ms = 10
+        },
+    };
+    uint8_t curr_button_i = 0;
+
     while (1) {
+        if (xTaskGetTickCount() % pdMS_TO_TICKS(1000) == 0) {
+            press_button(&controller, &buttons_to_press[curr_button_i]);
+            curr_button_i = (curr_button_i + 1) % 4;
+        }
+
+        JoystickState_t curr_state;
+        serialize_controller_state(&controller, &curr_state);
         if (!tud_mounted() || !tud_hid_ready()) {
             ESP_LOGI(TAG, "USB Device not mounted or ready...");
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
-
-        ESP_LOGI(TAG, "");
-        ControllerState_t controller;
-        JoystickState_t buffer;
-
-        init_controller(&controller);
-
-        ESP_LOGI(TAG, "Sending HAT_TOP");
-        tap_hat(&controller, HAT_TOP);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        serialize_controller_state(&controller, &buffer);
-        tud_hid_report(0, &buffer, sizeof(JoystickState_t));
-        reset_controller(&controller);
+        tud_hid_report(0, &curr_state, sizeof(JoystickState_t));
 
 
-        ESP_LOGI(TAG, "Sending HAT_RIGHT");
-        tap_hat(&controller, HAT_RIGHT);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        serialize_controller_state(&controller, &buffer);
-        tud_hid_report(0, &buffer, sizeof(JoystickState_t));
-        reset_controller(&controller);
-
-        ESP_LOGI(TAG, "Sending HAT_BOTTOM");
-        tap_hat(&controller, HAT_BOTTOM);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        serialize_controller_state(&controller, &buffer);
-        tud_hid_report(0, &buffer, sizeof(JoystickState_t));
-        reset_controller(&controller);
-
-        ESP_LOGI(TAG, "Sending HAT_LEFT");
-        tap_hat(&controller, HAT_LEFT);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        serialize_controller_state(&controller, &buffer);
-        tud_hid_report(0, &buffer, sizeof(JoystickState_t));
-        reset_controller(&controller);
     }
 }
 
@@ -158,9 +150,6 @@ void app_main(void)
     tusb_cfg.descriptor.full_speed_config = hid_configuration_descriptor;
     tusb_cfg.descriptor.string_count = string_desc_count;
 
-#if (TUD_OPT_HIGH_SPEED)
-    tusb_cfg.descriptor.high_speed_config = hid_configuration_descriptor;
-#endif // TUD_OPT_HIGH_SPEED
 
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     ESP_LOGI(TAG, "USB initialization DONE");
