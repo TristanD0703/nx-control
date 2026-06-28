@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
+#include "portmacro.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "class/hid/hid_device.h"
@@ -86,45 +87,47 @@ static void controller_task(void* arg)
           .op = HAT,
           .value_x = HAT_TOP,
           .value_y = 0,
-          .duration_ms = 10
+          .duration_ms = 100
         },
         {
           .op = HAT,
           .value_x = HAT_RIGHT,
           .value_y = 0,
-          .duration_ms = 10
+          .duration_ms = 100
         },
         {
           .op = HAT,
           .value_x = HAT_BOTTOM,
           .value_y = 0,
-          .duration_ms = 10
+          .duration_ms = 100
         },
         {
           .op = HAT,
           .value_x = HAT_LEFT,
           .value_y = 0,
-          .duration_ms = 10
+          .duration_ms = 100 
         },
     };
     uint8_t curr_button_i = 0;
+    TickType_t last_update = 0; 
 
     while (1) {
-        if (xTaskGetTickCount() % pdMS_TO_TICKS(1000) == 0) {
+        TickType_t curr_tick = xTaskGetTickCount();
+        if (curr_tick - last_update >= pdMS_TO_TICKS(1000)) {
             press_button(&controller, &buttons_to_press[curr_button_i]);
             curr_button_i = (curr_button_i + 1) % 4;
+            last_update = curr_tick;
+            ESP_LOGI(TAG, "Updating controller state");
         }
 
-        JoystickState_t curr_state;
-        serialize_controller_state(&controller, &curr_state);
         if (!tud_mounted() || !tud_hid_ready()) {
-            ESP_LOGI(TAG, "USB Device not mounted or ready...");
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
+        
+        JoystickState_t curr_state;
+        serialize_controller_state(&controller, &curr_state);
         tud_hid_report(0, &curr_state, sizeof(JoystickState_t));
-
-
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 

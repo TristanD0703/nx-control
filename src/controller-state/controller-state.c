@@ -4,6 +4,7 @@
 #include "FreeRTOSConfig.h"
 #include "esp_log.h"
 #include "esp_log_level.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/timers.h"
@@ -17,7 +18,7 @@ typedef struct {
 } TimerInfo_t;
 
 /**
- *  Initializes the controller such that no buttons are pressed
+ *  Initializes the controller such that no buttons are pressed and 
  *  sticks are in the center
   */
 void init_controller(ControllerState_t *controller) {
@@ -30,6 +31,17 @@ void init_controller(ControllerState_t *controller) {
         .RY = STICK_CENTER,
         .HAT = HAT_CENTER 
     };
+}
+
+/**
+ * Frees up all memory related to the controller button press's timer
+ */
+static void shutdown_timer(ControllerState_t *controller, JoystickButtonState_t *operation, TimerHandle_t handle)  {
+    if (!handle)
+        handle = controller->timer_metadata[operation->timer_index];
+
+    xTimerStop(handle, 0);
+    controller->timer_metadata[operation->timer_index] = NULL;
 }
 
 static void release_button(
@@ -54,30 +66,23 @@ static void release_button(
             break;
         }
         case BUTTON: {
-            state->Button ^= operation->value_x;
+            state->Button &= ~operation->value_x;
             break;
         }
     }
-}
 
-/*
-static void shutdown_timer(TimerInfo_t *info, TimerHandle_t handle)  {
-    if (!handle)
-        handle = info->controller->timer_metadata[info->timer_index];
-
-    xTimerStop(handle, 0);
-    info->controller->timer_metadata[info->timer_index] = NULL;
-    free(info);
+    shutdown_timer(controller, operation, NULL);
 }
-*/
 
 static void scheduler_callback(TimerHandle_t timer) {
     if (!timer)
         return;
 
+    ESP_LOGI(TAG, "Releasing button");
     TimerInfo_t *info = (TimerInfo_t *)pvTimerGetTimerID(timer);
 
     release_button(info->controller, &info->operation);
+    free(info);
 }
 
 
@@ -94,7 +99,7 @@ static int is_button_pressed_internal(
             return state->RX != STICK_CENTER || state->RY != STICK_CENTER;
         }
         case HAT: {
-            return state->HAT != HAT_CENTER && (state->HAT & button->value_x) != 0 ;
+            return state->HAT == button->value_x;
         }
         case BUTTON: {
             return (state->Button & button->value_x) != 0;
@@ -147,6 +152,7 @@ static uint8_t create_button_timer(
     info->operation = *button;
     info->controller = controller;
     info->timer_index = free_index;
+    info->operation.timer_index = free_index;
 
     uint64_t durationTicks = pdMS_TO_TICKS(info->operation.duration_ms);
     
@@ -167,6 +173,10 @@ static uint8_t create_button_timer(
     return 0;
 }
 
+/**
+ * ACTUALLY modifies the controller internal state based on the
+ * button action
+ */
 static void set_controller_state(
   ControllerState_t *controller, 
   JoystickButtonState_t *button
@@ -183,7 +193,7 @@ static void set_controller_state(
             return;
         }
         case BUTTON: {
-          controller->curr_state.Button &= button->value_x;
+          controller->curr_state.Button |= button->value_x;
           return;
         }
         case HAT: {
@@ -197,6 +207,16 @@ static void modify_timer_by_desired_state(const JoystickState_t *button) {
 }
 */
 
+/**
+ * Creates an event where the controller will send a button press to the
+ * Nintendo Switch based on the specified button type, value, and duration (in ms).
+ *
+ * Any subsequent calls to this method while the same button is active will extend
+ * its duration.
+ *
+ * duration < 0 will result in the button being held indefinitely until 
+ * release_button is called on that same button
+  */
 void press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
     int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
    
@@ -222,6 +242,9 @@ void reset_controller(ControllerState_t *controller) {
     init_controller(controller);
 }
 
+/**
+ * Retrieves the current state of the controller that can be sent over the USB port
+  */
 void serialize_controller_state(const ControllerState_t *controller, JoystickState_t *buffer) {
   *buffer = controller->curr_state;
 }
