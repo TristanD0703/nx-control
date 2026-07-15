@@ -2,6 +2,7 @@
 
 #include "freertos/idf_additions.h"
 #include <stdint.h>
+#include <math.h>
 
 #define MAX_TIMER_COUNT 20
 
@@ -72,6 +73,11 @@ typedef struct {
 
 void init_controller(ControllerState_t *controller);
 
+void release_button(
+  ControllerState_t *controller, 
+  JoystickButtonState_t *operation
+);
+
 void press_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *button
@@ -79,7 +85,7 @@ void press_button(
 
 void press_button_combo(
   ControllerState_t *controller, 
-  const JoystickButtonState_t *buttons, 
+  JoystickButtonState_t *buttons, 
   const uint8_t buttons_len
 );
 
@@ -94,3 +100,19 @@ void serialize_controller_state(
   const ControllerState_t *controller, 
   JoystickState_t *buffer
 );
+
+void update_sticks_raw(
+    ControllerState_t *controller, 
+    const uint8_t x, 
+    const uint8_t y, 
+    const JoystickOperation_t which_stick
+);
+
+void update_sticks_deg_mag(
+    ControllerState_t *controller, 
+    const double_t degrees, 
+    float_t magnitude, 
+    const JoystickOperation_t which_stick,
+    uint32_t duration_ms
+);
+

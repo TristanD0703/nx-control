@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/timers.h"
+#include <math.h>
 
 #define TAG "[controller-state]"
 
@@ -36,15 +37,29 @@ void init_controller(ControllerState_t *controller) {
 /**
  * Frees up all memory related to the controller button press's timer
  */
-static void shutdown_timer(ControllerState_t *controller, JoystickButtonState_t *operation, TimerHandle_t handle)  {
-    if (!handle)
-        handle = controller->timer_metadata[operation->timer_index];
+static void shutdown_timer(
+    ControllerState_t *controller, 
+    JoystickButtonState_t *operation, 
+    TimerHandle_t handle
+)  {
+    if (!handle) {
+        if (!operation->timer_index)
+            return;
 
+        handle = controller->timer_metadata[operation->timer_index];
+    }
+    
     xTimerStop(handle, 0);
+    xTimerDelete(handle, 0);
     controller->timer_metadata[operation->timer_index] = NULL;
 }
 
-static void release_button(
+static void shutdown_timer_direct(TimerHandle_t handle) {
+    xTimerStop(handle, 0);
+    xTimerDelete(handle, 0);
+}
+
+void release_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 ) {
@@ -61,7 +76,6 @@ static void release_button(
             break;
         }
         case HAT: {
-            ESP_LOGI(TAG, "RELEASE HAT");
             state->HAT = HAT_CENTER; 
             break;
         }
@@ -149,12 +163,18 @@ static uint8_t create_button_timer(
     if (info == NULL)
         return 2;
 
+    if (button->op != LSTICK || button->op != RSTICK) {
+        button->value_y = 0;
+    }
+
     info->operation = *button;
     info->controller = controller;
     info->timer_index = free_index;
     info->operation.timer_index = free_index;
 
-    uint64_t durationTicks = pdMS_TO_TICKS(info->operation.duration_ms);
+    uint64_t durationTicks = pdMS_TO_TICKS(
+        info->operation.duration_ms
+    );
     
     TimerHandle_t curr_timer = xTimerCreate(
         "Button Timer", 
@@ -203,9 +223,47 @@ static void set_controller_state(
 }
 
 /*
-static void modify_timer_by_desired_state(const JoystickState_t *button) {
+ * If a timer is currently running for a desired button press or
+ * controller state modification, extends that timer by the specified
+ * time in ms.
+ */
+static void modify_timer_by_desired_state(
+    ControllerState_t *controller, 
+    JoystickButtonState_t *button
+) {
+    if (button->op != LSTICK || button->op != RSTICK)
+        button->value_y = 0;
+
+    TimerInfo_t *matching_timer = NULL;
+    TimerHandle_t matching_handle;
+
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        TimerHandle_t curr_timer = controller->timer_metadata[i];
+        TimerInfo_t *curr_info = (TimerInfo_t *)pvTimerGetTimerID(
+            curr_timer
+        );
+
+        if (
+            curr_info->operation.op == button->op 
+            && curr_info->operation.value_x == button->value_x 
+            && curr_info->operation.value_y == button->value_y
+        ) {
+            matching_timer = curr_info;
+            matching_handle = curr_timer;
+            break;
+        }
+    }
+
+    if (!matching_timer)
+        create_button_timer(controller, button);
+
+    matching_timer->operation.duration_ms += button->duration_ms;
+    xTimerChangePeriod(
+        matching_handle, 
+        pdMS_TO_TICKS(button->duration_ms), 
+        0
+    );
 }
-*/
 
 /**
  * Creates an event where the controller will send a button press to the
@@ -225,21 +283,116 @@ void press_button(ControllerState_t *controller, JoystickButtonState_t *button) 
         create_button_timer(controller, button);
         ESP_LOGI(TAG, "Pressed button");
     } else {
-        ESP_LOGI(TAG, "Pressing button currently activated not supported yet.");
+        modify_timer_by_desired_state(controller, button);
+        ESP_LOGI(TAG, "Extended button timer");
     }
 }
 
 
 void press_button_combo(
   ControllerState_t *controller, 
-  const JoystickButtonState_t *buttons, 
+  JoystickButtonState_t *buttons, 
   const uint8_t buttons_len
 ) {
-    
+   for (uint8_t i = 0; i < buttons_len; i++) {
+      press_button(controller, &buttons[i]);
+   }
 }
 
 void reset_controller(ControllerState_t *controller) {
     init_controller(controller);
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        shutdown_timer_direct(controller->timer_metadata[i]);
+        controller->timer_metadata[i] = NULL;
+    }
+}
+
+/**
+ * Sets the stick state directly without automatically creating timers
+ */
+void update_sticks_raw(
+    ControllerState_t *controller, 
+    const uint8_t x, 
+    const uint8_t y, 
+    const JoystickOperation_t which_stick
+) {
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        TimerHandle_t handle = controller->timer_metadata[i];
+        TimerInfo_t *info = (TimerInfo_t *)pvTimerGetTimerID(handle);
+
+        if (info->operation.op == which_stick) {
+            shutdown_timer_direct(handle);
+            controller->timer_metadata[i] = NULL;
+        }
+    }
+    
+    switch (which_stick) {
+        case RSTICK: {
+            controller->curr_state.RX = x;
+            controller->curr_state.RY = y;
+            break;
+        }
+        case LSTICK: {
+            controller->curr_state.LX = x;
+            controller->curr_state.LY = y;
+            break;
+        }
+        default: return;
+    }
+        
+}
+
+/**
+ * Directly updates the controller state for the left or right stick
+ * based on a degree and magnitude vector. 
+ * Magnitude >= 1 is fully extended
+ */
+void update_sticks_deg_mag_raw(
+    ControllerState_t *controller, 
+    const double_t degrees, 
+    float_t magnitude, 
+    const JoystickOperation_t which_stick
+) {
+    if (magnitude > 1.0)
+        magnitude = 1.0;
+
+    double_t radians = (degrees * M_PI) / 180;
+
+    uint8_t x = cos(radians) * magnitude;
+    uint8_t y = sin(radians) * magnitude;
+
+    update_sticks_raw(controller, x, y, which_stick);
+}
+
+
+/**
+ * Sets the controller state for the left or right stick
+ * for the provided amount of time in ms based on a degree and 
+ * magnitude vector. Magnitude >= 1 is fully extended
+ */
+void update_sticks_deg_mag(
+    ControllerState_t *controller, 
+    const double_t degrees, 
+    float_t magnitude, 
+    const JoystickOperation_t which_stick,
+    uint32_t duration_ms
+) {
+    if (magnitude > 1.0)
+        magnitude = 1.0;
+
+    double_t radians = (degrees * M_PI) / 180;
+
+    uint8_t x = cos(radians) * magnitude;
+    uint8_t y = sin(radians) * magnitude;
+
+    JoystickButtonState_t button = {
+        .op = which_stick,
+        .duration_ms = duration_ms,
+        .value_x = x,
+        .value_y = y,
+    };
+
+    press_button(controller, &button);
 }
 
 /**

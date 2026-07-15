@@ -121,6 +121,7 @@ static void controller_task(void* arg)
         }
 
         if (!tud_mounted() || !tud_hid_ready()) {
+            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
         
