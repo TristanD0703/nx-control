@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include "controller-state.h"
 #include "FreeRTOSConfig.h"
 #include "esp_log.h"
@@ -8,15 +9,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/timers.h"
-#include <math.h>
+#include "../timer/timer.h"
 
 #define TAG "[controller-state]"
-
-typedef struct {
-    ControllerState_t *controller;
-    JoystickButtonState_t operation;
-    uint8_t timer_index;
-} TimerInfo_t;
 
 /**
  *  Initializes the controller such that no buttons are pressed and 
