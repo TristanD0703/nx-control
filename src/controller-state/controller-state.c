@@ -1,14 +1,14 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
-#include "controller-state.h"
 #include "FreeRTOSConfig.h"
 #include "esp_log.h"
 #include "esp_log_level.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
-#include "freertos/timers.h"
+
+#include "controller-state.h"
 #include "../timer/timer.h"
 
 #define TAG "[controller-state]"
@@ -17,7 +17,7 @@
  *  Initializes the controller such that no buttons are pressed and 
  *  sticks are in the center
   */
-void init_controller(ControllerState_t *controller) {
+void init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
     memset(controller, 0, sizeof(ControllerState_t));
 
     controller->curr_state = (JoystickState_t){ 
@@ -27,6 +27,11 @@ void init_controller(ControllerState_t *controller) {
         .RY = STICK_CENTER,
         .HAT = HAT_CENTER 
     };
+    
+    if (!timer) {
+        timer = &DEFAULT_IMPL;
+    }
+    controller->timer = timer;
 }
 
 /**
@@ -44,14 +49,8 @@ static void shutdown_timer(
         handle = controller->timer_metadata[operation->timer_index];
     }
     
-    xTimerStop(handle, 0);
-    xTimerDelete(handle, 0);
+    controller->timer->cancel_timer(handle);
     controller->timer_metadata[operation->timer_index] = NULL;
-}
-
-static void shutdown_timer_direct(TimerHandle_t handle) {
-    xTimerStop(handle, 0);
-    xTimerDelete(handle, 0);
 }
 
 void release_button(
@@ -83,12 +82,8 @@ void release_button(
     shutdown_timer(controller, operation, NULL);
 }
 
-static void scheduler_callback(TimerHandle_t timer) {
-    if (!timer)
-        return;
-
+static void scheduler_callback(TimerInfo_t *info) {
     ESP_LOGI(TAG, "Releasing button");
-    TimerInfo_t *info = (TimerInfo_t *)pvTimerGetTimerID(timer);
 
     release_button(info->controller, &info->operation);
     free(info);
@@ -167,24 +162,13 @@ static uint8_t create_button_timer(
     info->timer_index = free_index;
     info->operation.timer_index = free_index;
 
-    uint64_t durationTicks = pdMS_TO_TICKS(
-        info->operation.duration_ms
-    );
-    
-    TimerHandle_t curr_timer = xTimerCreate(
-        "Button Timer", 
-        durationTicks, 
-        pdFALSE, 
-        (void *)info, 
-        scheduler_callback
+
+    controller->timer->create_and_start_timer(
+        info->operation.duration_ms, 
+        scheduler_callback,
+        info
     );
 
-    if (curr_timer == NULL)
-        return 3;
-
-    controller->timer_metadata[free_index] = curr_timer;
-    if (xTimerStart(curr_timer, 0) != pdPASS)
-        return 4;
     return 0;
 }
 
@@ -230,13 +214,11 @@ static void modify_timer_by_desired_state(
         button->value_y = 0;
 
     TimerInfo_t *matching_timer = NULL;
-    TimerHandle_t matching_handle;
+    TimerHandle_t matching_handle = NULL;
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         TimerHandle_t curr_timer = controller->timer_metadata[i];
-        TimerInfo_t *curr_info = (TimerInfo_t *)pvTimerGetTimerID(
-            curr_timer
-        );
+        TimerInfo_t *curr_info = controller->timer->get_timer_metadata(curr_timer);
 
         if (
             curr_info->operation.op == button->op 
@@ -249,15 +231,11 @@ static void modify_timer_by_desired_state(
         }
     }
 
-    if (!matching_timer)
+    if (!matching_timer || !matching_handle)
         create_button_timer(controller, button);
 
     matching_timer->operation.duration_ms += button->duration_ms;
-    xTimerChangePeriod(
-        matching_handle, 
-        pdMS_TO_TICKS(button->duration_ms), 
-        0
-    );
+    controller->timer->change_timer_duration(matching_handle, button->duration_ms);
 }
 
 /**
@@ -295,9 +273,9 @@ void press_button_combo(
 }
 
 void reset_controller(ControllerState_t *controller) {
-    init_controller(controller);
+    init_controller(controller, NULL);
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        shutdown_timer_direct(controller->timer_metadata[i]);
+        controller->timer->cancel_timer(controller->timer_metadata[i]);
         controller->timer_metadata[i] = NULL;
     }
 }
@@ -313,10 +291,10 @@ void update_sticks_raw(
 ) {
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         TimerHandle_t handle = controller->timer_metadata[i];
-        TimerInfo_t *info = (TimerInfo_t *)pvTimerGetTimerID(handle);
+        TimerInfo_t *info = controller->timer->get_timer_metadata(handle); 
 
         if (info->operation.op == which_stick) {
-            shutdown_timer_direct(handle);
+            controller->timer->cancel_timer(handle);
             controller->timer_metadata[i] = NULL;
         }
     }

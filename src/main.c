@@ -80,7 +80,7 @@ void tud_resume_cb(void)
 static void controller_task(void* arg)
 {
     ControllerState_t controller;
-    init_controller(&controller);
+    init_controller(&controller, NULL);
 
     JoystickButtonState_t buttons_to_press[] = {
         {
