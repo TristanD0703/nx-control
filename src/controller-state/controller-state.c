@@ -6,6 +6,7 @@
 #include "esp_log_level.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 
 #include "controller-state.h"
@@ -31,6 +32,7 @@ void init_controller(ControllerState_t *controller, const TimerInterface_t *time
     if (!timer) {
         timer = &DEFAULT_IMPL;
     }
+
     controller->timer = timer;
 }
 
@@ -43,10 +45,10 @@ static void shutdown_timer(
     TimerHandle_t handle
 )  {
     if (!handle) {
-        if (!operation->timer_index)
-            return;
-
         handle = controller->timer_metadata[operation->timer_index];
+
+        if (!handle)
+          return;
     }
     
     controller->timer->cancel_timer(handle);
@@ -153,7 +155,7 @@ static uint8_t create_button_timer(
     if (info == NULL)
         return 2;
 
-    if (button->op != LSTICK || button->op != RSTICK) {
+    if (button->op != LSTICK && button->op != RSTICK) {
         button->value_y = 0;
     }
 
@@ -163,11 +165,12 @@ static uint8_t create_button_timer(
     info->operation.timer_index = free_index;
 
 
-    controller->timer->create_and_start_timer(
+    TimerHandle_t handle = controller->timer->create_and_start_timer(
         info->operation.duration_ms, 
         scheduler_callback,
         info
     );
+    controller->timer_metadata[free_index] = handle;
 
     return 0;
 }
@@ -210,7 +213,7 @@ static void modify_timer_by_desired_state(
     ControllerState_t *controller, 
     JoystickButtonState_t *button
 ) {
-    if (button->op != LSTICK || button->op != RSTICK)
+    if (button->op != LSTICK && button->op != RSTICK)
         button->value_y = 0;
 
     TimerInfo_t *matching_timer = NULL;
@@ -218,6 +221,11 @@ static void modify_timer_by_desired_state(
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         TimerHandle_t curr_timer = controller->timer_metadata[i];
+
+        if (!curr_timer) {
+            continue;
+        }
+
         TimerInfo_t *curr_info = controller->timer->get_timer_metadata(curr_timer);
 
         if (
@@ -231,8 +239,10 @@ static void modify_timer_by_desired_state(
         }
     }
 
-    if (!matching_timer || !matching_handle)
+    if (!matching_timer || !matching_handle) {
         create_button_timer(controller, button);
+        return;
+    }
 
     matching_timer->operation.duration_ms += button->duration_ms;
     controller->timer->change_timer_duration(matching_handle, button->duration_ms);
@@ -273,11 +283,18 @@ void press_button_combo(
 }
 
 void reset_controller(ControllerState_t *controller) {
-    init_controller(controller, NULL);
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        controller->timer->cancel_timer(controller->timer_metadata[i]);
+        TimerHandle_t curr_timer = controller->timer_metadata[i];
+        
+        if (!curr_timer) {  
+            continue;
+        }
+
+        controller->timer->cancel_timer(curr_timer);
         controller->timer_metadata[i] = NULL;
     }
+
+    init_controller(controller, NULL);
 }
 
 /**
@@ -291,6 +308,11 @@ void update_sticks_raw(
 ) {
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         TimerHandle_t handle = controller->timer_metadata[i];
+
+        if (!handle) {
+            continue;
+        }
+
         TimerInfo_t *info = controller->timer->get_timer_metadata(handle); 
 
         if (info->operation.op == which_stick) {
@@ -355,8 +377,8 @@ void update_sticks_deg_mag(
 
     double_t radians = (degrees * M_PI) / 180;
 
-    uint8_t x = cos(radians) * magnitude;
-    uint8_t y = sin(radians) * magnitude;
+    uint8_t x = cos(radians) * magnitude * 255;
+    uint8_t y = sin(radians) * magnitude * 255;
 
     JoystickButtonState_t button = {
         .op = which_stick,

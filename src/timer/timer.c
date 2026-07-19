@@ -20,6 +20,7 @@ TimerHandle_t create_and_start_timer(
     SchedulerCallback_t cb, 
     TimerInfo_t *info
 ) {
+    info->cb = cb;
     TimerHandle_t curr_timer = xTimerCreate(
         "Button Timer", 
         pdMS_TO_TICKS(duration), 
