@@ -23,8 +23,7 @@ AppTimerHandle_t create_and_start_timer(
     SchedulerCallback_t cb, 
     TimerMetadata_t *info
 ) {
-    struct TimerMetadata *internal_meta = (struct TimerMetadata*) info;
-    internal_meta->cb = cb;
+    info->cb = cb;
 
     TimerHandle_t curr_timer = xTimerCreate(
         "Button Timer", 
@@ -34,7 +33,7 @@ AppTimerHandle_t create_and_start_timer(
         internal_cb 
     );
 
-    if (xTimerStart(curr_timer, 0) != pdPASS)
+    if (!curr_timer || xTimerStart(curr_timer, 0) != pdPASS)
         return NULL;
 
     return curr_timer;

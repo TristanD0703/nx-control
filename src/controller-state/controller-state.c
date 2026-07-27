@@ -10,7 +10,8 @@
 
 /**
  *  Initializes the controller such that no buttons are pressed and 
- *  sticks are in the center
+ *  sticks are in the center. Timer Interface is not preserved across
+ *  init calls
   */
 void init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
     memset(controller, 0, sizeof(ControllerState_t));

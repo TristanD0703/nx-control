@@ -74,11 +74,11 @@ typedef struct {
     const TimerInterface_t *timer;
 } ControllerState_t;
 
-typedef struct{
+typedef struct {
+    TimerMetadata_t meta; 
     ControllerState_t *controller;
     JoystickButtonState_t operation;
     uint8_t timer_index;
-    SchedulerCallback_t cb;
 } TimerInfo_t;
 
 void init_controller(ControllerState_t *controller, const TimerInterface_t *timer);

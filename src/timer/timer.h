@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 typedef void *AppTimerHandle_t;
-typedef void *TimerMetadata_t;
+typedef struct TimerMetadata TimerMetadata_t;
 
 typedef void (*SchedulerCallback_t)(TimerMetadata_t *handle);
 
