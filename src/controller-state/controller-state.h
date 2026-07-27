@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include <math.h>
-#include "freertos/idf_additions.h"
+#include "../timer/timer.h"
 
 #define MAX_TIMER_COUNT 20
 
@@ -70,9 +70,16 @@ typedef struct {
 
 typedef struct {
     JoystickState_t curr_state;
-    TimerHandle_t timer_metadata[MAX_TIMER_COUNT];
+    AppTimerHandle_t timer_metadata[MAX_TIMER_COUNT];
     const TimerInterface_t *timer;
 } ControllerState_t;
+
+typedef struct{
+    ControllerState_t *controller;
+    JoystickButtonState_t operation;
+    uint8_t timer_index;
+    SchedulerCallback_t cb;
+} TimerInfo_t;
 
 void init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
 

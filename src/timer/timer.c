@@ -4,23 +4,28 @@
 #include "freertos/projdefs.h"
 #include "freertos/timers.h"
 
-TimerInfo_t *get_timer_metadata(TimerHandle_t handle) {
-    return (TimerInfo_t *)pvTimerGetTimerID(
+TimerMetadata_t *get_timer_metadata(AppTimerHandle_t handle) {
+    return (TimerMetadata_t *)pvTimerGetTimerID(
         handle 
     );
 }
 
 static void internal_cb(TimerHandle_t handle) {
-    TimerInfo_t *data = get_timer_metadata(handle);
-    data->cb(data); 
+    struct TimerMetadata *data = (struct TimerMetadata *)pvTimerGetTimerID(
+        handle 
+    );
+
+    data->cb((TimerMetadata_t *)data); 
 }
 
-TimerHandle_t create_and_start_timer(
+AppTimerHandle_t create_and_start_timer(
     uint32_t duration, 
     SchedulerCallback_t cb, 
-    TimerInfo_t *info
+    TimerMetadata_t *info
 ) {
-    info->cb = cb;
+    struct TimerMetadata *internal_meta = (struct TimerMetadata*) info;
+    internal_meta->cb = cb;
+
     TimerHandle_t curr_timer = xTimerCreate(
         "Button Timer", 
         pdMS_TO_TICKS(duration), 
@@ -35,7 +40,7 @@ TimerHandle_t create_and_start_timer(
     return curr_timer;
 }
 
-void change_timer_duration(TimerHandle_t handle, uint32_t duration_ms) {
+void change_timer_duration(AppTimerHandle_t handle, uint32_t duration_ms) {
     xTimerChangePeriod(
         handle, 
         pdMS_TO_TICKS(duration_ms), 
@@ -43,7 +48,7 @@ void change_timer_duration(TimerHandle_t handle, uint32_t duration_ms) {
     );
 }
 
-void cancel_timer(TimerHandle_t handle) {
+void cancel_timer(AppTimerHandle_t handle) {
     xTimerStop(handle, 0);
     xTimerDelete(handle, 0);
 }

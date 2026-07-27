@@ -1,13 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
-#include "FreeRTOSConfig.h"
-#include "esp_log.h"
-#include "esp_log_level.h"
-#include "esp_system.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/idf_additions.h"
-#include "freertos/projdefs.h"
+#include <stdlib.h>
 
 #include "controller-state.h"
 #include "../timer/timer.h"
@@ -42,7 +36,7 @@ void init_controller(ControllerState_t *controller, const TimerInterface_t *time
 static void shutdown_timer(
     ControllerState_t *controller, 
     JoystickButtonState_t *operation, 
-    TimerHandle_t handle
+    AppTimerHandle_t handle
 )  {
     if (!handle) {
         handle = controller->timer_metadata[operation->timer_index];
@@ -84,9 +78,8 @@ void release_button(
     shutdown_timer(controller, operation, NULL);
 }
 
-static void scheduler_callback(TimerInfo_t *info) {
-    ESP_LOGI(TAG, "Releasing button");
-
+static void scheduler_callback(TimerMetadata_t *meta) {
+    TimerInfo_t *info = (TimerInfo_t *)meta;
     release_button(info->controller, &info->operation);
     free(info);
 }
@@ -165,10 +158,10 @@ static uint8_t create_button_timer(
     info->operation.timer_index = free_index;
 
 
-    TimerHandle_t handle = controller->timer->create_and_start_timer(
+    AppTimerHandle_t handle = controller->timer->create_and_start_timer(
         info->operation.duration_ms, 
         scheduler_callback,
-        info
+        (TimerMetadata_t *)info
     );
     controller->timer_metadata[free_index] = handle;
 
@@ -217,16 +210,16 @@ static void modify_timer_by_desired_state(
         button->value_y = 0;
 
     TimerInfo_t *matching_timer = NULL;
-    TimerHandle_t matching_handle = NULL;
+    AppTimerHandle_t matching_handle = NULL;
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        TimerHandle_t curr_timer = controller->timer_metadata[i];
+        AppTimerHandle_t curr_timer = controller->timer_metadata[i];
 
         if (!curr_timer) {
             continue;
         }
 
-        TimerInfo_t *curr_info = controller->timer->get_timer_metadata(curr_timer);
+        TimerInfo_t *curr_info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_timer);
 
         if (
             curr_info->operation.op == button->op 
@@ -264,10 +257,8 @@ void press_button(ControllerState_t *controller, JoystickButtonState_t *button) 
     if (!button_pressed) {
         set_controller_state(controller, button);
         create_button_timer(controller, button);
-        ESP_LOGI(TAG, "Pressed button");
     } else {
         modify_timer_by_desired_state(controller, button);
-        ESP_LOGI(TAG, "Extended button timer");
     }
 }
 
@@ -284,7 +275,7 @@ void press_button_combo(
 
 void reset_controller(ControllerState_t *controller) {
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        TimerHandle_t curr_timer = controller->timer_metadata[i];
+        AppTimerHandle_t curr_timer = controller->timer_metadata[i];
         
         if (!curr_timer) {  
             continue;
@@ -307,13 +298,13 @@ void update_sticks_raw(
     const JoystickOperation_t which_stick
 ) {
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        TimerHandle_t handle = controller->timer_metadata[i];
+        AppTimerHandle_t handle = controller->timer_metadata[i];
 
         if (!handle) {
             continue;
         }
 
-        TimerInfo_t *info = controller->timer->get_timer_metadata(handle); 
+        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(handle); 
 
         if (info->operation.op == which_stick) {
             controller->timer->cancel_timer(handle);

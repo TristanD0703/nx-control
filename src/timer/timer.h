@@ -1,30 +1,25 @@
 #pragma once
+#include <stdint.h>
 
-#include "../controller-state/controller-state.h"
-#include "freertos/idf_additions.h"
-#include "../controller-state/controller-state.h"
+typedef void *AppTimerHandle_t;
+typedef void *TimerMetadata_t;
 
-typedef struct TimerInfo TimerInfo_t;
+typedef void (*SchedulerCallback_t)(TimerMetadata_t *handle);
 
-typedef void (*SchedulerCallback_t)(TimerInfo_t *handle);
-
-struct TimerInfo {
-    ControllerState_t *controller;
-    JoystickButtonState_t operation;
-    uint8_t timer_index;
-    SchedulerCallback_t cb;
+struct TimerMetadata {
+    SchedulerCallback_t cb;  
 };
 
 struct TimerInterface {
     // Returns null if unsuccessful
-    TimerHandle_t (*create_and_start_timer)(
+    AppTimerHandle_t (*create_and_start_timer)(
         uint32_t duration, 
         SchedulerCallback_t cb, 
-        TimerInfo_t *info
+        TimerMetadata_t *info
     );
-    void (*change_timer_duration)(TimerHandle_t handle, uint32_t duration_ms);
-    void (*cancel_timer)(TimerHandle_t handle); 
-    TimerInfo_t* (*get_timer_metadata)(TimerHandle_t handle);
+    void (*change_timer_duration)(AppTimerHandle_t handle, uint32_t duration_ms);
+    void (*cancel_timer)(AppTimerHandle_t handle); 
+    TimerMetadata_t* (*get_timer_metadata)(AppTimerHandle_t handle);
 };
 
 typedef struct TimerInterface TimerInterface_t;
