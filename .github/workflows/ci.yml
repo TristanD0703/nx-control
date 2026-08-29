@@ -12,6 +12,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Cache ESP-IDF tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.espressif
+          key: esp-idf-release-v6.1-${{ runner.os }}-esp32s3
+
       - name: Install ESP-IDF
         run: |
           git clone --branch release/v6.1 --depth 1 --recursive https://github.com/espressif/esp-idf.git "$RUNNER_TEMP/esp-idf"
