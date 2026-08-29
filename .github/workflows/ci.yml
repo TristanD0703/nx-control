@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  firmware-build:
+    name: Build firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ESP-IDF
+        run: |
+          git clone --branch v6.1.0 --depth 1 --recursive https://github.com/espressif/esp-idf.git "$RUNNER_TEMP/esp-idf"
+          "$RUNNER_TEMP/esp-idf/install.sh" esp32s3
+
+      - name: Build firmware
+        env:
+          IDF_PATH: ${{ runner.temp }}/esp-idf
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
+
+  host-tests:
+    name: Build and run host tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure host tests
+        run: cmake -S tests -B build-test
+
+      - name: Build host tests
+        run: cmake --build build-test
+
+      - name: Run host tests
+        run: ctest --test-dir build-test --output-on-failure

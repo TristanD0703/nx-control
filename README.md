@@ -56,5 +56,5 @@ cmake --build build-test
 
 Then, run the tests:
 ```bash
-./build-test/host/nintendo_switch_host_tests
+ctest --test-dir build-test
 ```
