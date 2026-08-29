@@ -9,3 +9,4 @@ set(COMPONENTS src)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(tusb_hid)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
