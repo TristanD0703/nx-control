@@ -286,7 +286,7 @@ void reset_controller(ControllerState_t *controller) {
         controller->timer_metadata[i] = NULL;
     }
 
-    init_controller(controller, NULL);
+    init_controller(controller, controller->timer);
 }
 
 /**

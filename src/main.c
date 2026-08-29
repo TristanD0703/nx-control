@@ -7,6 +7,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "portmacro.h"
+#include "timer/timer.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "class/hid/hid_device.h"
@@ -79,8 +80,15 @@ void tud_resume_cb(void)
 
 static void controller_task(void* arg)
 {
+    TimerInterface_t timer_impl = {
+        .get_timer_metadata = get_timer_metadata,
+        .create_and_start_timer = create_and_start_timer,
+        .change_timer_duration = change_timer_duration,
+        .cancel_timer = cancel_timer
+    };
+
     ControllerState_t controller;
-    init_controller(&controller, NULL);
+    init_controller(&controller, &timer_impl);
 
     JoystickButtonState_t buttons_to_press[] = {
         {
