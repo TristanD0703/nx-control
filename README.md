@@ -39,3 +39,22 @@ idf.py -p {path_from_above} flash monitor
 (To exit the serial monitor, type `Ctrl-]`.)
 
 This project is still in development. more to come soon.
+
+## Build and Run Tests
+
+The controller has the ability to test both on device (microcontroller) and on the host machine (your laptop/desktop). Device tests will come at a later date
+
+### Host Tests
+
+First, much like the main project, we need to build the tests using CMake.
+Use the following command:
+
+```bash
+cmake -S tests -B build-test
+cmake --build build-test
+```
+
+Then, run the tests:
+```bash
+ctest --test-dir build-test
+```
