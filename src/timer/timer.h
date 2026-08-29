@@ -24,5 +24,3 @@ struct TimerInterface {
 
 typedef struct TimerInterface TimerInterface_t;
 
-extern const TimerInterface_t DEFAULT_IMPL;
-

@@ -51,11 +51,3 @@ void cancel_timer(AppTimerHandle_t handle) {
     xTimerStop(handle, 0);
     xTimerDelete(handle, 0);
 }
-
-
-const TimerInterface_t DEFAULT_IMPL = {
-    .create_and_start_timer = create_and_start_timer,
-    .change_timer_duration = change_timer_duration,
-    .cancel_timer = cancel_timer,
-    .get_timer_metadata = get_timer_metadata
-};

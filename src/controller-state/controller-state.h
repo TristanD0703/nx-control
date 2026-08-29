@@ -81,7 +81,7 @@ typedef struct {
     uint8_t timer_index;
 } TimerInfo_t;
 
-void init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
+int init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
 
 void release_button(
   ControllerState_t *controller, 

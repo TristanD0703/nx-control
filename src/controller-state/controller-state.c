@@ -13,7 +13,10 @@
  *  sticks are in the center. Timer Interface is not preserved across
  *  init calls
   */
-void init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
+int init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
+    if (!controller || !timer) {
+        return 0;
+    }
     memset(controller, 0, sizeof(ControllerState_t));
 
     controller->curr_state = (JoystickState_t){ 
@@ -23,12 +26,9 @@ void init_controller(ControllerState_t *controller, const TimerInterface_t *time
         .RY = STICK_CENTER,
         .HAT = HAT_CENTER 
     };
-    
-    if (!timer) {
-        timer = &DEFAULT_IMPL;
-    }
 
     controller->timer = timer;
+    return 1;
 }
 
 /**
