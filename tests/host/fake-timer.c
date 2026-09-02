@@ -1,22 +1,6 @@
-#include "timer.h"
+#include "timer/timer.h"
+#include "fake-timer.h"
 #include <stdint.h>
-
-typedef struct {
-    uint32_t duration;
-    SchedulerCallback_t cb;
-    TimerMetadata_t *info;
-} StartTimerArgs_t;
-
-typedef struct {
-    AppTimerHandle_t handle;
-    uint32_t duration_ms;
-} ChangeTimerDurationArgs_t;
-
-typedef struct {
-    void *call_args;
-    void *returns;
-    uint32_t call_count;
-} FunctionSpy_t;
 
 FunctionSpy_t start_timer_spy = {0};
 FunctionSpy_t get_timer_data_spy = {0};

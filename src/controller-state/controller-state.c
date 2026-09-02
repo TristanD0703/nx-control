@@ -8,17 +8,12 @@
 
 #define TAG "[controller-state]"
 
-/**
- *  Initializes the controller such that no buttons are pressed and 
- *  sticks are in the center. Timer Interface is not preserved across
- *  init calls
-  */
 int init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
     if (!controller || !timer) {
         return 0;
     }
-    memset(controller, 0, sizeof(ControllerState_t));
 
+    memset(controller, 0, sizeof(ControllerState_t));
     controller->curr_state = (JoystickState_t){ 
         .LX = STICK_CENTER, 
         .LY = STICK_CENTER, 
@@ -31,9 +26,6 @@ int init_controller(ControllerState_t *controller, const TimerInterface_t *timer
     return 1;
 }
 
-/**
- * Frees up all memory related to the controller button press's timer
- */
 static void shutdown_timer(
     ControllerState_t *controller, 
     JoystickButtonState_t *operation, 
@@ -108,13 +100,6 @@ static int is_button_pressed_internal(
     }
 }
 
-/**
- *  Checks if a button is pressed based on the desired button state.
- *  If the operation is either L or R stick, returns true if the stick is not centered.
- *  If the operation is HAT or D-Pad, returns true if it's in that exact configuration
- *  (ex: It will not return desired state is HAT right and current state is top-right)
- *  If op is button, returns true if that button is currently pressed
-*/
 int is_button_pressed(
   const ControllerState_t *state, 
   const JoystickButtonState_t *button
@@ -242,16 +227,6 @@ static void modify_timer_by_desired_state(
     controller->timer->change_timer_duration(matching_handle, button->duration_ms);
 }
 
-/**
- * Creates an event where the controller will send a button press to the
- * Nintendo Switch based on the specified button type, value, and duration (in ms).
- *
- * Any subsequent calls to this method while the same button is active will extend
- * its duration.
- *
- * duration < 0 will result in the button being held indefinitely until 
- * release_button is called on that same button
-  */
 void press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
     int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
    
@@ -289,9 +264,6 @@ void reset_controller(ControllerState_t *controller) {
     init_controller(controller, controller->timer);
 }
 
-/**
- * Sets the stick state directly without automatically creating timers
- */
 void update_sticks_raw(
     ControllerState_t *controller, 
     const uint8_t x, 
@@ -329,11 +301,6 @@ void update_sticks_raw(
         
 }
 
-/**
- * Directly updates the controller state for the left or right stick
- * based on a degree and magnitude vector. 
- * Magnitude >= 1 is fully extended
- */
 void update_sticks_deg_mag_raw(
     ControllerState_t *controller, 
     const double_t degrees, 

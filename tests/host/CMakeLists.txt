@@ -4,7 +4,7 @@ add_executable(nintendo_switch_controller_host_tests)
 
 target_include_directories(nintendo_switch_controller_host_tests
   PRIVATE
-    ../../src/timer
+    ../../src
 )
 
 target_sources(nintendo_switch_controller_host_tests
