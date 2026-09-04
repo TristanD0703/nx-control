@@ -8,6 +8,12 @@
 
 #define TAG "[controller-state]"
 
+const uint32_t MAGIC_VALUE = 0xDEADBEEF;
+
+int is_controller_initialized(const ControllerState_t *state) {
+    return state->magic == MAGIC_VALUE;
+}
+
 int init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
     if (!controller || !timer) {
         return 0;
@@ -23,6 +29,7 @@ int init_controller(ControllerState_t *controller, const TimerInterface_t *timer
     };
 
     controller->timer = timer;
+    controller->magic = MAGIC_VALUE;
     return 1;
 }
 
@@ -46,6 +53,10 @@ void release_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 ) {
+    if (!is_controller_initialized(controller)) {
+        return;
+    }
+
     JoystickState_t *state = &controller->curr_state;
     switch (operation->op) {
         case LSTICK: {
@@ -77,8 +88,6 @@ static void scheduler_callback(TimerMetadata_t *meta) {
     free(info);
 }
 
-
-
 static int is_button_pressed_internal(
   const JoystickState_t *state, 
   const JoystickButtonState_t *button
@@ -104,7 +113,8 @@ int is_button_pressed(
   const ControllerState_t *state, 
   const JoystickButtonState_t *button
 ) {
-    return is_button_pressed_internal(&state->curr_state, button);
+    return is_controller_initialized(state) && 
+        is_button_pressed_internal(&state->curr_state, button);
 }
 
 /**
@@ -228,6 +238,10 @@ static void modify_timer_by_desired_state(
 }
 
 void press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
+    if (!is_controller_initialized(controller)) {
+        return;
+    }
+
     int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
    
     if (!button_pressed) {
@@ -250,6 +264,11 @@ void press_button_combo(
 }
 
 void reset_controller(ControllerState_t *controller) {
+    if (!is_controller_initialized(controller)) {
+        init_controller(controller, controller->timer);
+        return;
+    }
+
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         AppTimerHandle_t curr_timer = controller->timer_metadata[i];
         
@@ -270,6 +289,10 @@ void update_sticks_raw(
     const uint8_t y, 
     const JoystickOperation_t which_stick
 ) {
+    if (!is_controller_initialized(controller)) {
+        return;
+    }
+
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         AppTimerHandle_t handle = controller->timer_metadata[i];
 
@@ -355,3 +378,4 @@ void update_sticks_deg_mag(
 void serialize_controller_state(const ControllerState_t *controller, JoystickState_t *buffer) {
   *buffer = controller->curr_state;
 }
+

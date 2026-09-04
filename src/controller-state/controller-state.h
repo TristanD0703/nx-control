@@ -72,6 +72,7 @@ typedef struct {
     JoystickState_t curr_state;
     AppTimerHandle_t timer_metadata[MAX_TIMER_COUNT];
     const TimerInterface_t *timer;
+    uint32_t magic;
 } ControllerState_t;
 
 typedef struct {
@@ -91,7 +92,7 @@ typedef struct {
 int init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
 
 /**
- * Frees up all memory related to the controller button press's timer
+ * Stops pressing the button and cancels the timer(s) related to this button
  */
 void release_button(
   ControllerState_t *controller, 
@@ -186,3 +187,4 @@ void update_sticks_deg_mag(
     uint32_t duration_ms
 );
 
+int is_controller_initialized(const ControllerState_t *controller);

@@ -42,11 +42,35 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install gcovr
+        run: sudo apt-get update && sudo apt-get install --yes gcovr
+
       - name: Configure host tests
         run: cmake -S tests -B build-test
 
       - name: Build host tests
         run: cmake --build build-test
 
-      - name: Run host tests
-        run: ctest --test-dir build-test --output-on-failure
+      - name: Run tests and generate coverage
+        run: cmake --build build-test --target coverage
+
+      - name: Publish coverage summary
+        if: ${{ always() && hashFiles('build-test/coverage/summary.json') != '' }}
+        run: |
+          line=$(jq -r '.line_percent' build-test/coverage/summary.json)
+          function=$(jq -r '.function_percent' build-test/coverage/summary.json)
+          branch=$(jq -r '.branch_percent' build-test/coverage/summary.json)
+          {
+            echo "## Host Test Coverage"
+            echo
+            echo "| Lines | Functions | Branches |"
+            echo "| ---: | ---: | ---: |"
+            echo "| ${line}% | ${function}% | ${branch}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-test-coverage
+          path: build-test/coverage/
