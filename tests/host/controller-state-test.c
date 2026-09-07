@@ -1,8 +1,11 @@
 #include <string.h>
+#include <stdlib.h>
 
+#include "timer/timer.h"
 #include "unity.h"
 #include "controller-state/controller-state.h"
 #include "fake-timer.h"
+#include "unity_internals.h"
 
 void setUp() {
     start_timer_spy = (FunctionSpy_t){0};
@@ -209,10 +212,65 @@ void correctly_determines_button_presses() {
     check_button.value_x = SWITCH_A;
     controller.curr_state.Button = SWITCH_A; 
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &check_button));
+
+    check_button.op = HAT;
+    check_button.value_x = HAT_BOTTOM;
+    controller.curr_state.HAT = HAT_BOTTOM; 
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &check_button));
+
+    check_button.value_x = HAT_BOTTOM;
+    controller.curr_state.HAT = HAT_TOP; 
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &check_button));
 }
 
 // Pressing each button and ensure timers are queued properly
 // Ensures that timers created will always fit in stack-allocated buffer
+void buttons_press_properly() {
+    TEST_ASSERT_FALSE(press_button(NULL, NULL));
+     
+    ControllerState_t controller;
+    JoystickButtonState_t button; 
+    TEST_ASSERT_FALSE(press_button(&controller, NULL));
+    TEST_ASSERT_FALSE(press_button(NULL, &button));
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // We're gonna press A for 500 ms
+    button.op = BUTTON;
+    button.value_x = SWITCH_A;
+    button.duration_ms = 500;
+
+    // initialize spy
+    void *random_info = (void *)5000;
+    void *random_handle = (void *)5001;
+
+    StartTimerArgs_t args[1] = {{ 
+      .duration = button.duration_ms, 
+      .cb = scheduler_callback,
+      .info = random_info
+    }};
+
+    void** returns[] = { random_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &button));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    // Assert button is pressed. Must be consistent with other functions
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
+
+    TimerInfo_t *info = malloc(sizeof(TimerInfo_t));
+    info->controller = &controller;
+    info->operation = button;
+
+    // Simulate a callback after 500ms
+    scheduler_callback((TimerMetadata_t *)info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+}
+
 
 // HAT buttons must only have one selected direction at a time 
 // (pressing left then right results in right)
@@ -232,5 +290,6 @@ int main(void)
   RUN_TEST(serializes_controller_state);
   RUN_TEST(initializes_controller);
   RUN_TEST(correctly_determines_button_presses);
+  RUN_TEST(buttons_press_properly);
   return UNITY_END();
 }

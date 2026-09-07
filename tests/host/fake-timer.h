@@ -1,3 +1,6 @@
+#include <stdint.h>
+#include <timer/timer.h>
+
 typedef struct {
     uint32_t duration;
     SchedulerCallback_t cb;

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "controller-state.h"
 #include "../timer/timer.h"
@@ -11,7 +12,7 @@
 const uint32_t MAGIC_VALUE = 0xDEADBEEF;
 
 int is_controller_initialized(const ControllerState_t *state) {
-    return state->magic == MAGIC_VALUE;
+    return state != NULL && state->magic == MAGIC_VALUE;
 }
 
 int init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
@@ -49,12 +50,12 @@ static void shutdown_timer(
     controller->timer_metadata[operation->timer_index] = NULL;
 }
 
-void release_button(
+int release_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 ) {
     if (!is_controller_initialized(controller)) {
-        return;
+        return 0;
     }
 
     JoystickState_t *state = &controller->curr_state;
@@ -77,12 +78,16 @@ void release_button(
             state->Button &= ~operation->value_x;
             break;
         }
+        default: {
+            return 0;
+        }
     }
 
     shutdown_timer(controller, operation, NULL);
+    return 1;
 }
 
-static void scheduler_callback(TimerMetadata_t *meta) {
+void scheduler_callback(TimerMetadata_t *meta) {
     TimerInfo_t *info = (TimerInfo_t *)meta;
     release_button(info->controller, &info->operation);
     free(info);
@@ -237,9 +242,9 @@ static void modify_timer_by_desired_state(
     controller->timer->change_timer_duration(matching_handle, button->duration_ms);
 }
 
-void press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
+int press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
     if (!is_controller_initialized(controller)) {
-        return;
+        return 0;
     }
 
     int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
@@ -250,17 +255,21 @@ void press_button(ControllerState_t *controller, JoystickButtonState_t *button) 
     } else {
         modify_timer_by_desired_state(controller, button);
     }
+    return 1;
 }
 
 
-void press_button_combo(
+int press_button_combo(
   ControllerState_t *controller, 
   JoystickButtonState_t *buttons, 
   const uint8_t buttons_len
 ) {
-   for (uint8_t i = 0; i < buttons_len; i++) {
-      press_button(controller, &buttons[i]);
-   }
+    int is_success = 1; 
+    for (uint8_t i = 0; i < buttons_len; i++) {
+      if (!press_button(controller, &buttons[i]))
+          is_success = 0;
+    }
+    return is_success;
 }
 
 void reset_controller(ControllerState_t *controller) {

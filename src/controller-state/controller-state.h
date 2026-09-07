@@ -94,7 +94,7 @@ int init_controller(ControllerState_t *controller, const TimerInterface_t *timer
 /**
  * Stops pressing the button and cancels the timer(s) related to this button
  */
-void release_button(
+int release_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 );
@@ -109,7 +109,7 @@ void release_button(
  * duration < 0 will result in the button being held indefinitely until 
  * release_button is called on that same button
   */
-void press_button(
+int press_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *button
 );
@@ -118,7 +118,7 @@ void press_button(
  * Ensures all button press commands passed are called pressed at the same
  * time given the constraints of the controller API
  */
-void press_button_combo(
+int press_button_combo(
   ControllerState_t *controller, 
   JoystickButtonState_t *buttons, 
   const uint8_t buttons_len
