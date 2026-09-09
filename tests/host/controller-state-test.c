@@ -271,6 +271,158 @@ void buttons_press_properly() {
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
 
+void hat_buttons_press_properly() {
+    TEST_ASSERT_FALSE(press_button(NULL, NULL));
+     
+    ControllerState_t controller;
+    JoystickButtonState_t button; 
+    TEST_ASSERT_FALSE(press_button(&controller, NULL));
+    TEST_ASSERT_FALSE(press_button(NULL, &button));
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // We're gonna press bottom d-pad for 500 ms
+    button.op = HAT;
+    button.value_x = HAT_BOTTOM;
+    button.duration_ms = 500;
+
+    // initialize spy
+    void *random_info = (void *)5000;
+    void *random_handle = (void *)5001;
+
+    StartTimerArgs_t args[1] = {{ 
+      .duration = button.duration_ms, 
+      .cb = scheduler_callback,
+      .info = random_info
+    }};
+
+    void** returns[] = { random_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &button));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    // Assert button is pressed. Must be consistent with other functions
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
+
+    TimerInfo_t *info = malloc(sizeof(TimerInfo_t));
+    info->controller = &controller;
+    info->operation = button;
+
+    // Simulate a callback after 500ms
+    scheduler_callback((TimerMetadata_t *)info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+}
+
+void stick_buttons_press_properly() {
+    TEST_ASSERT_FALSE(press_button(NULL, NULL));
+     
+    ControllerState_t controller;
+    JoystickButtonState_t button; 
+    TEST_ASSERT_FALSE(press_button(&controller, NULL));
+    TEST_ASSERT_FALSE(press_button(NULL, &button));
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // We're gonna move the stick up for 500 ms
+    button.op = LSTICK;
+    button.value_x = STICK_CENTER;
+    button.value_y = STICK_MAX;
+    button.duration_ms = 500;
+
+    // initialize spy
+    void *random_info = (void *)5000;
+    void *random_handle = (void *)5001;
+
+    StartTimerArgs_t args[1] = {{ 
+      .duration = button.duration_ms, 
+      .cb = scheduler_callback,
+      .info = random_info
+    }};
+
+    void** returns[] = { random_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &button));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    // Assert button is pressed. Must be consistent with other functions
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
+
+    TimerInfo_t *info = malloc(sizeof(TimerInfo_t));
+    info->controller = &controller;
+    info->operation = button;
+
+    // Simulate a callback after 500ms
+    scheduler_callback((TimerMetadata_t *)info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+}
+
+void mutliple_button_presses_different() {
+    TEST_ASSERT_FALSE(press_button(NULL, NULL));
+     
+    ControllerState_t controller;
+    JoystickButtonState_t button; 
+    JoystickButtonState_t button2; 
+    TEST_ASSERT_FALSE(press_button(&controller, NULL));
+    TEST_ASSERT_FALSE(press_button(NULL, &button));
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // We're gonna move the stick up for 1 sec and pressing A for 500 ms
+    button.op = LSTICK;
+    button.value_x = STICK_CENTER;
+    button.value_y = STICK_MAX;
+    button.duration_ms = 1000;
+
+    button2.op = BUTTON;
+    button2.value_x = SWITCH_A;
+    button2.duration_ms = 500;
+
+    // initialize spy
+    void *random_info = (void *)5000;
+    void *random_handle = (void *)5001;
+
+    StartTimerArgs_t args[2] = {
+        { 
+            .duration = button.duration_ms, 
+            .cb = scheduler_callback,
+            .info = random_info
+        },
+        { 
+            .duration = button2.duration_ms, 
+            .cb = scheduler_callback,
+            .info = random_info
+        }
+    };
+
+    void** returns[] = { random_handle, random_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &button));
+    // 2 timers created
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 2);
+
+    // Assert both buttons is pressed. Must be consistent with other functions
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
+
+    TimerInfo_t *info = malloc(sizeof(TimerInfo_t));
+    info->controller = &controller;
+    info->operation = button;
+
+    // Simulate a callback after 500ms
+    scheduler_callback((TimerMetadata_t *)info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+}
 
 // HAT buttons must only have one selected direction at a time 
 // (pressing left then right results in right)
@@ -291,5 +443,7 @@ int main(void)
   RUN_TEST(initializes_controller);
   RUN_TEST(correctly_determines_button_presses);
   RUN_TEST(buttons_press_properly);
+  RUN_TEST(hat_buttons_press_properly);
+  RUN_TEST(stick_buttons_press_properly);
   return UNITY_END();
 }
