@@ -105,7 +105,7 @@ static int is_button_pressed_internal(
             return state->RX != STICK_CENTER || state->RY != STICK_CENTER;
         }
         case HAT: {
-            return state->HAT == button->value_x;
+            return button->value_x ? state->HAT == button->value_x : state->HAT != HAT_CENTER;
         }
         case BUTTON: {
             return (state->Button & button->value_x) != 0;
@@ -222,11 +222,14 @@ static void modify_timer_by_desired_state(
 
         TimerInfo_t *curr_info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_timer);
 
-        if (
-            curr_info->operation.op == button->op 
-            && curr_info->operation.value_x == button->value_x 
-            && curr_info->operation.value_y == button->value_y
-        ) {
+        int is_centerable_button = curr_info->operation.op != BUTTON;  
+
+        int button_matches = curr_info->operation.op == button->op
+          && is_centerable_button 
+          || (!is_centerable_button && curr_info->operation.value_x == button->value_x);
+
+
+        if (button_matches) {
             matching_timer = curr_info;
             matching_handle = curr_timer;
             break;
@@ -248,13 +251,19 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
     }
 
     int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
-   
-    if (!button_pressed) {
-        set_controller_state(controller, button);
+
+    // Buttons that can have a "neutral" state are "pressed" if there aren't centered.
+    // We'd like to modify that state instead of creating a new timer for it
+    int is_centerable_button = button->op != BUTTON;  
+
+    if (!button_pressed && !is_centerable_button) {
         create_button_timer(controller, button);
     } else {
         modify_timer_by_desired_state(controller, button);
     }
+
+    set_controller_state(controller, button);
+
     return 1;
 }
 

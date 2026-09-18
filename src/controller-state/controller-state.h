@@ -4,7 +4,7 @@
 #include <math.h>
 #include "../timer/timer.h"
 
-#define MAX_TIMER_COUNT 20
+#define MAX_TIMER_COUNT 16 
 
 typedef struct TimerInterface TimerInterface_t;
 

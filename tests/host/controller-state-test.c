@@ -292,11 +292,7 @@ void hat_buttons_press_properly() {
     void *random_info = (void *)5000;
     void *random_handle = (void *)5001;
 
-    StartTimerArgs_t args[1] = {{ 
-      .duration = button.duration_ms, 
-      .cb = scheduler_callback,
-      .info = random_info
-    }};
+    StartTimerArgs_t args[1] = { 0 };
 
     void** returns[] = { random_handle };
 
@@ -306,6 +302,9 @@ void hat_buttons_press_properly() {
     TEST_ASSERT_TRUE(press_button(&controller, &button));
     TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
 
+    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
+    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
+
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
 
@@ -313,6 +312,7 @@ void hat_buttons_press_properly() {
     AppTimerHandle_t cancelled_timers[1] = {0};
     cancel_timer_spy.call_args = cancelled_timers;
     scheduler_callback(args[0].info);
+    TEST_ASSERT_TRUE(cancelled_timers[0] == random_handle);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
@@ -337,11 +337,7 @@ void stick_buttons_press_properly() {
     void *random_info = (void *)5000;
     void *random_handle = (void *)5001;
 
-    StartTimerArgs_t args[1] = {{ 
-      .duration = button.duration_ms, 
-      .cb = scheduler_callback,
-      .info = random_info
-    }};
+    StartTimerArgs_t args[1] = { 0 };
 
     void** returns[] = { random_handle };
 
@@ -350,6 +346,9 @@ void stick_buttons_press_properly() {
 
     TEST_ASSERT_TRUE(press_button(&controller, &button));
     TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
+    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
 
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
@@ -428,8 +427,8 @@ void multiple_button_presses_same() {
 
     // Pressing the A button twice with different timer lengths
     // First button should do as normal
-    // Second button call should just cancel the previous timer, then create
-    // a new timer with the length specified by the second press
+    // Second button call should notice the button is already pressed, try to search for the timer,
+    // change the duration to the specified by the second press
 
     button1.op = BUTTON;
     button1.value_x = SWITCH_A;
@@ -439,36 +438,106 @@ void multiple_button_presses_same() {
     button2.value_x = SWITCH_A;
     button2.duration_ms = 500;
 
-    StartTimerArgs_t args[2] = {0, 0};
+    StartTimerArgs_t args[1] = {0};
 
     void *random_handle = (void *)1000;
-    void *random_handle2 = (void *)1001;
-    void** returns[] = { random_handle, random_handle2 };
+    void** returns[] = { random_handle };
 
     start_timer_spy.call_args = args;
     start_timer_spy.returns = returns;
 
+    press_button(&controller, &button1);
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
+
+    AppTimerHandle_t timer_data_args[1];
+    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
+    get_timer_data_spy.call_args = timer_data_args;
+    get_timer_data_spy.returns = get_timer_returns;
+
+    ChangeTimerDurationArgs_t change_duration_args[1];
+    change_timer_duration_spy.call_args = change_duration_args;
+
+    press_button(&controller, &button2);
+
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
+    TEST_ASSERT_TRUE(change_timer_duration_spy.call_count == 1);
+    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
+    TEST_ASSERT_TRUE(change_duration_args[0].handle == random_handle);
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
     AppTimerHandle_t canceled_handles[1] = { 0 }; 
     cancel_timer_spy.call_args  = canceled_handles;
+    scheduler_callback(args[0].info);
+
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
+    TEST_ASSERT_TRUE(canceled_handles[0] == random_handle);
+}
+
+void multiple_button_presses_hat() {
+    ControllerState_t controller;
+    JoystickButtonState_t button1;
+    JoystickButtonState_t button2;
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // HAT buttons must only have one selected direction at a time 
+    // (pressing left then right results in right)
+
+    // should modify the timer in place
+    button1.op = HAT;
+    button1.value_x = HAT_LEFT;
+    button1.duration_ms = 500;
+
+    button2.op = HAT;
+    button2.value_x = HAT_RIGHT;
+    button2.duration_ms = 600;
+
+    StartTimerArgs_t args[1] = { 0 };
+
+    void *left_timer_handle = (void *)1000;
+    void** returns[] = { left_timer_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
+    AppTimerHandle_t timer_data_args[1];
+    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
+    get_timer_data_spy.call_args = timer_data_args;
+    get_timer_data_spy.returns = get_timer_returns;
+
+    ChangeTimerDurationArgs_t change_duration_args[1];
+    change_timer_duration_spy.call_args = change_duration_args;
+
     press_button(&controller, &button2);
+
+    TEST_ASSERT_TRUE(change_duration_args[0].handle == left_timer_handle);
+    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button1));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
+
+    AppTimerHandle_t canceled_handles[1] = { 0 }; 
+    cancel_timer_spy.call_args = canceled_handles;
+    scheduler_callback(args[0].info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
+    TEST_ASSERT_TRUE(canceled_handles[0] == left_timer_handle);
 }
 
-// HAT buttons must only have one selected direction at a time 
-// (pressing left then right results in right)
+// back-to-back stick updates modify the same timer instead of
+// creating a new one
 
-// Simulate a callback return and ensure button is no longer pressed
-// calling release button and ensure button is nolonger pressed AND there's no timer
+// "raw" updates to the controller does cancels all timers
+// if done externally
 
 // Timers are created properly and API is handled correctly
 // Resetting controller means all timers are cancelled
 
 // Math is correct on sticks degree and magnitude
-// All operations must fail if controller is uninitialized
 
 int main(void)
 {
@@ -481,5 +550,6 @@ int main(void)
   RUN_TEST(stick_buttons_press_properly);
   RUN_TEST(multiple_button_presses_different);
   RUN_TEST(multiple_button_presses_same);
+  RUN_TEST(multiple_button_presses_hat);
   return UNITY_END();
 }
