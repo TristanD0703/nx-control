@@ -4,9 +4,14 @@
 #include <math.h>
 #include "../timer/timer.h"
 
-#define MAX_TIMER_COUNT 20
+#define MAX_TIMER_COUNT 17
 
 typedef struct TimerInterface TimerInterface_t;
+typedef struct {
+    double_t x;
+    double_t y;
+} Pos;
+
 
 typedef enum {
 	SWITCH_Y       = 0x01,
@@ -55,7 +60,6 @@ typedef struct {
     uint16_t value_x;
     uint16_t value_y; // Only defined if op is L/RSTICK
     uint32_t duration_ms;
-    uint8_t timer_index;
 } JoystickButtonState_t;
 
 typedef struct {
@@ -70,8 +74,9 @@ typedef struct {
 
 typedef struct {
     JoystickState_t curr_state;
-    AppTimerHandle_t timer_metadata[MAX_TIMER_COUNT];
+    AppTimerHandle_t timer_handles[MAX_TIMER_COUNT];
     const TimerInterface_t *timer;
+    uint32_t magic;
 } ControllerState_t;
 
 typedef struct {
@@ -79,38 +84,82 @@ typedef struct {
     ControllerState_t *controller;
     JoystickButtonState_t operation;
     uint8_t timer_index;
+    AppTimerHandle_t handle;
 } TimerInfo_t;
 
+/**
+ *  Initializes the controller such that no buttons are pressed and 
+ *  sticks are in the center. Timer Interface is not preserved across
+ *  init calls.
+ *
+ *  Returns zero if init fails
+  */
 int init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
 
-void release_button(
+/**
+ * Stops pressing the button and cancels the timer(s) related to this button
+ */
+int release_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 );
 
-void press_button(
+/**
+ * Creates an event where the controller will send a button press to the
+ * Nintendo Switch based on the specified button type, value, and duration (in ms).
+ *
+ * Any subsequent calls to this method while the same button is active will extend
+ * its duration.
+ *
+ * duration < 0 will result in the button being held indefinitely until 
+ * release_button is called on that same button
+  */
+int press_button(
   ControllerState_t *controller, 
   JoystickButtonState_t *button
 );
 
-void press_button_combo(
+/**
+ * Ensures all button press commands passed are called pressed at the same
+ * time given the constraints of the controller API
+ */
+int press_button_combo(
   ControllerState_t *controller, 
   JoystickButtonState_t *buttons, 
   const uint8_t buttons_len
 );
 
+/**
+ *  Checks if a button is pressed based on the desired button state.
+ *  If the operation is either L or R stick, returns true if the stick is not centered.
+ *  If the operation is HAT or D-Pad, returns true if it's in that exact configuration
+ *  (ex: It will not return desired state is HAT right and current state is top-right)
+ *  If op is button, returns true if that button is currently pressed
+*/
 int is_button_pressed(
   const ControllerState_t *state, 
   const JoystickButtonState_t *button
 );
 
+/*
+ * Reinitializes the controller to it's initial state while cancelling
+ * all pending operations
+ */
 void reset_controller(ControllerState_t *controller);
 
+/**
+ * Retrieves the current state of the controller that can be sent over the USB port
+  */
 void serialize_controller_state(
   const ControllerState_t *controller, 
   JoystickState_t *buffer
 );
 
+/**
+ * Sets the stick state directly without automatically creating timers.
+ * Use this if you're directly managing stick directions rather than
+ * holding a specific direction
+ */
 void update_sticks_raw(
     ControllerState_t *controller, 
     const uint8_t x, 
@@ -118,6 +167,23 @@ void update_sticks_raw(
     const JoystickOperation_t which_stick
 );
 
+/**
+ * Directly updates the controller state for the left or right stick
+ * based on a degree and magnitude vector. 
+ * Magnitude >= 1 is fully extended
+ */
+void update_sticks_deg_mag_raw(
+    ControllerState_t *controller, 
+    const double_t degrees, 
+    float_t magnitude, 
+    const JoystickOperation_t which_stick
+);
+
+/**
+ * Sets a timer duration to update the controller state for the left 
+ * or right stick based on a degree and magnitude vector. 
+ * Magnitude >= 1 is fully extended.
+ */
 void update_sticks_deg_mag(
     ControllerState_t *controller, 
     const double_t degrees, 
@@ -126,3 +192,4 @@ void update_sticks_deg_mag(
     uint32_t duration_ms
 );
 
+int is_controller_initialized(const ControllerState_t *controller);
