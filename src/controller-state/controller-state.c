@@ -228,7 +228,6 @@ static void modify_timer_by_desired_state(
           && is_centerable_button 
           || (!is_centerable_button && curr_info->operation.value_x == button->value_x);
 
-
         if (button_matches) {
             matching_timer = curr_info;
             matching_handle = curr_timer;
