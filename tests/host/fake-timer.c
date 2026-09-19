@@ -14,7 +14,7 @@ TimerMetadata_t *get_timer_metadata_stub(AppTimerHandle_t handle) {
 
     call_args[call_count] = handle;
 
-    TimerMetadata_t *ret = curr_ret[0];
+    TimerMetadata_t *ret = curr_ret[call_count];
     get_timer_data_spy.call_count += 1; 
 
     return ret;

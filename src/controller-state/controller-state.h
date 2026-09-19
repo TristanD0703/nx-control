@@ -7,6 +7,11 @@
 #define MAX_TIMER_COUNT 17
 
 typedef struct TimerInterface TimerInterface_t;
+typedef struct {
+    double_t x;
+    double_t y;
+} Pos;
+
 
 typedef enum {
 	SWITCH_Y       = 0x01,

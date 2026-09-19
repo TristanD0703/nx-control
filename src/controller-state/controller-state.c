@@ -293,8 +293,11 @@ void reset_controller(ControllerState_t *controller) {
             continue;
         }
 
-        controller->timer->cancel_timer(curr_timer);
-        controller->timer_metadata[i] = NULL;
+        TimerMetadata_t *meta = controller->timer->get_timer_metadata(curr_timer); 
+        TimerInfo_t *info = (TimerInfo_t *)meta; 
+
+        shutdown_timer(controller, &(info->operation), curr_timer);
+        scheduler_callback(meta);
     }
 
     init_controller(controller, controller->timer);
@@ -342,11 +345,10 @@ void update_sticks_raw(
         
 }
 
-void update_sticks_deg_mag_raw(
-    ControllerState_t *controller, 
+
+static Pos deg_mag_to_x_y(
     const double_t degrees, 
-    float_t magnitude, 
-    const JoystickOperation_t which_stick
+    float_t magnitude
 ) {
     if (magnitude > 1.0) {
         magnitude = 1.0;
@@ -362,7 +364,22 @@ void update_sticks_deg_mag_raw(
     uint8_t x = (uint8_t) fmin(STICK_MAX, fmax(STICK_MIN, calculated_x));
     uint8_t y = (uint8_t) fmin(STICK_MAX, fmax(STICK_MIN, calculated_y));
 
-    update_sticks_raw(controller, x, y, which_stick);
+    Pos ret = {
+      .x = x,
+      .y = y
+    };
+
+    return ret;
+}
+
+void update_sticks_deg_mag_raw(
+    ControllerState_t *controller, 
+    const double_t degrees, 
+    float_t magnitude, 
+    const JoystickOperation_t which_stick
+) {
+    Pos converted = deg_mag_to_x_y(degrees, magnitude);
+    update_sticks_raw(controller, converted.x, converted.y, which_stick);
 }
 
 
@@ -378,19 +395,13 @@ void update_sticks_deg_mag(
     const JoystickOperation_t which_stick,
     uint32_t duration_ms
 ) {
-    if (magnitude > 1.0)
-        magnitude = 1.0;
-
-    double_t radians = (degrees * M_PI) / 180;
-
-    uint8_t x = cos(radians) * magnitude * 255;
-    uint8_t y = sin(radians) * magnitude * 255;
+    Pos converted = deg_mag_to_x_y(degrees, magnitude);
 
     JoystickButtonState_t button = {
         .op = which_stick,
         .duration_ms = duration_ms,
-        .value_x = x,
-        .value_y = y,
+        .value_x = converted.x,
+        .value_y = converted.y,
     };
 
     press_button(controller, &button);

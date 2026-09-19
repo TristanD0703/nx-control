@@ -955,6 +955,11 @@ void deg_mag_updates_properly() {
     TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
     TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
 
+    // Large magnitude clamps to max
+    update_sticks_deg_mag_raw(&controller, 90, 2, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
     // left
     update_sticks_deg_mag_raw(&controller, 180, 1, RSTICK);
     TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
@@ -1021,6 +1026,80 @@ void full_magnitude_near_positive_axes_does_not_overflow() {
     TEST_ASSERT_TRUE(controller.curr_state.RY == 126);
 }
 
+void deg_mag_stick_press_properly() {
+    ControllerState_t controller;
+    JoystickButtonState_t button; 
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    // We're gonna press up for 500 ms
+    button.op = LSTICK;
+    button.duration_ms = 500;
+
+    // initialize spy
+    void *random_info = (void *)5000;
+    void *random_handle = (void *)5001;
+
+    StartTimerArgs_t args[1] = { 0 };
+    StartTimerArgs_t expected_args = {
+        .duration = button.duration_ms,
+        .cb = scheduler_callback,
+        .info = random_info,
+    };
+
+    void** returns[] = { random_handle };
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    update_sticks_deg_mag(&controller, 90, 1, LSTICK, 500);
+
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
+    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
+
+    // Assert button is pressed. Must be consistent with other functions
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
+
+    // Simulate a callback after 500ms
+    AppTimerHandle_t cancelled_timers[1] = {0};
+    cancel_timer_spy.call_args = cancelled_timers;
+    scheduler_callback(args[0].info);
+
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+}
+
+void resets_controller() {
+    JoystickButtonState_t buttons[3] = {
+        { .op = BUTTON, .duration_ms = 500, .value_x = SWITCH_A },
+        { .op = BUTTON, .duration_ms = 500, .value_x = SWITCH_B },
+        { .op = BUTTON, .duration_ms = 500, .value_x = SWITCH_X }
+    };
+    ControllerState_t controller;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    void *a_handle = (void *)1000;
+    void *b_handle = (void *)1001;
+    void *x_handle = (void *)1002;
+    void **returns[] = { a_handle, b_handle, x_handle };
+
+    StartTimerArgs_t args[3] = { 0 };
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    AppTimerHandle_t cancelled_timers[3] = {0};
+    cancel_timer_spy.call_args = cancelled_timers;
+
+    TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 3));
+ 
+    AppTimerHandle_t timer_data_args[3];
+    TimerMetadata_t *get_timer_returns[3] = { args[0].info, args[1].info, args[2].info };
+    get_timer_data_spy.call_args = timer_data_args;
+    get_timer_data_spy.returns = get_timer_returns;
+
+    reset_controller(&controller);
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 3);
+}
 
 int main(void)
 {
@@ -1042,5 +1121,7 @@ int main(void)
     RUN_TEST(raw_stick_updates_cancel_only_stick);
     RUN_TEST(deg_mag_updates_properly);
     RUN_TEST(full_magnitude_near_positive_axes_does_not_overflow);
+    RUN_TEST(deg_mag_stick_press_properly);
+    RUN_TEST(resets_controller);
     return UNITY_END();
 }
