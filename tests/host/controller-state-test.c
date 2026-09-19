@@ -868,13 +868,158 @@ void raw_updates_cancel_timers() {
 
     TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
     TEST_ASSERT_TRUE(cancel_args[0] == timer_handle);
+
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
+    TEST_ASSERT_TRUE(controller.curr_state.LX == 100);
+    TEST_ASSERT_TRUE(controller.curr_state.LY == 50);
 }
 
+void raw_stick_updates_cancel_only_stick() {
+    ControllerState_t controller;
+    JoystickButtonState_t stick1;
+    JoystickButtonState_t stick2;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    stick1.op = BUTTON;
+    stick1.duration_ms = 500;
+    stick1.value_x = SWITCH_L;
+
+    void *timer_handle =  (void *)1000;
+    void **timer_returns[] = { timer_handle };
+    StartTimerArgs_t args[1] = {0};
+    
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = timer_returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &stick1));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick1));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    stick2.op = RSTICK;
+    stick2.value_x = 100;
+    stick2.value_y = 50;
+
+    AppTimerHandle_t get_timer_args[1] = { 0 };
+    TimerMetadata_t *get_timer_returns[] = { args[0].info };
+
+    get_timer_data_spy.call_args = get_timer_args;
+    get_timer_data_spy.returns = get_timer_returns;
+
+    update_sticks_raw(&controller, 100, 50, RSTICK);
+
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 0);
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
+
+    AppTimerHandle_t cancelled_timers[1] = {0};
+    cancel_timer_spy.call_args = cancelled_timers;
+    scheduler_callback(args[0].info);
+}
 // Timers are created properly and API is handled correctly
 // Resetting controller means all timers are cancelled
 
 // Math is correct on sticks degree and magnitude
+void deg_mag_updates_properly() {
+    ControllerState_t controller;
+    JoystickButtonState_t stick1;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    stick1.op = RSTICK;
+    stick1.duration_ms = 500;
+
+    // Halfway right
+    update_sticks_deg_mag_raw(&controller, 0, .5, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 192);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
+
+    // Halfway up 
+    update_sticks_deg_mag_raw(&controller, 90, .5, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 192);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+    // Halfway 30 degrees
+    update_sticks_deg_mag_raw(&controller, 30, .5, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 160);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 183);
+
+    // Full 30 degrees
+    update_sticks_deg_mag_raw(&controller, 30, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 192);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 239);
+
+    // Completely center
+    update_sticks_deg_mag_raw(&controller, 360, 0, RSTICK);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &stick1));
+
+    // up
+    update_sticks_deg_mag_raw(&controller, 90, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+    // left
+    update_sticks_deg_mag_raw(&controller, 180, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MIN);
+
+    // down 
+    update_sticks_deg_mag_raw(&controller, 270, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MIN);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+    // right 
+    update_sticks_deg_mag_raw(&controller, 360, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MAX);
+
+    update_sticks_deg_mag_raw(&controller, 0, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MAX);
+
+    // Congruent angles work too
+    update_sticks_deg_mag_raw(&controller, 450, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+    update_sticks_deg_mag_raw(&controller, -450, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MIN);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+    update_sticks_deg_mag_raw(&controller, -90, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MIN);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_CENTER);
+
+
+    // negative magnitude
+    update_sticks_deg_mag_raw(&controller, 360, -1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_CENTER);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MIN);
+
+    update_sticks_deg_mag_raw(&controller, 30, -.5, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 96);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 73);
+
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 0);
+}
+
+void full_magnitude_near_positive_axes_does_not_overflow() {
+    ControllerState_t controller;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    update_sticks_deg_mag_raw(&controller, 1, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MAX);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 130);
+
+    update_sticks_deg_mag_raw(&controller, 89, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 130);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
+
+    update_sticks_deg_mag_raw(&controller, 91, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == 126);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == STICK_MAX);
+
+    update_sticks_deg_mag_raw(&controller, 359, 1, RSTICK);
+    TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MAX);
+    TEST_ASSERT_TRUE(controller.curr_state.RY == 126);
+}
 
 
 int main(void)
@@ -894,5 +1039,8 @@ int main(void)
     RUN_TEST(multiple_button_presses_same_one_different_interleave);
     RUN_TEST(can_press_all_buttons);
     RUN_TEST(raw_updates_cancel_timers);
+    RUN_TEST(raw_stick_updates_cancel_only_stick);
+    RUN_TEST(deg_mag_updates_properly);
+    RUN_TEST(full_magnitude_near_positive_axes_does_not_overflow);
     return UNITY_END();
 }

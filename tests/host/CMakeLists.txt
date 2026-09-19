@@ -48,12 +48,13 @@ if(GCOVR_EXECUTABLE)
   set(COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
 
   add_custom_target(coverage
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${COVERAGE_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${COVERAGE_DIR}
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
     COMMAND ${GCOVR_EXECUTABLE}
       --root ${CMAKE_SOURCE_DIR}/..
       --object-directory ${CMAKE_BINARY_DIR}
-      --exclude ${CMAKE_SOURCE_DIR}/../tests/
+      --exclude ${CMAKE_SOURCE_DIR}/
       --html-details ${COVERAGE_DIR}/index.html
       --json-summary ${COVERAGE_DIR}/summary.json
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

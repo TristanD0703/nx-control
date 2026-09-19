@@ -348,13 +348,19 @@ void update_sticks_deg_mag_raw(
     float_t magnitude, 
     const JoystickOperation_t which_stick
 ) {
-    if (magnitude > 1.0)
+    if (magnitude > 1.0) {
         magnitude = 1.0;
+    }
+    double_t mapped_degrees = ((int32_t) round(degrees) + 360) % 360;
+    magnitude *= STICK_CENTER;
 
-    double_t radians = (degrees * M_PI) / 180;
+    double_t radians = (mapped_degrees * M_PI) / 180;
 
-    uint8_t x = cos(radians) * magnitude;
-    uint8_t y = sin(radians) * magnitude;
+    double_t calculated_x = round(cos(radians) * magnitude) + STICK_CENTER;
+    double_t calculated_y = round(sin(radians) * magnitude) + STICK_CENTER;
+
+    uint8_t x = (uint8_t) fmin(STICK_MAX, fmax(STICK_MIN, calculated_x));
+    uint8_t y = (uint8_t) fmin(STICK_MAX, fmax(STICK_MIN, calculated_y));
 
     update_sticks_raw(controller, x, y, which_stick);
 }
@@ -396,4 +402,3 @@ void update_sticks_deg_mag(
 void serialize_controller_state(const ControllerState_t *controller, JoystickState_t *buffer) {
   *buffer = controller->curr_state;
 }
-
