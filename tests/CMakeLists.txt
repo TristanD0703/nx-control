@@ -12,9 +12,14 @@ endif()
 project(nintendo_switch_controller_tests C)
 
 option(ENABLE_SANITIZERS "Enable ASan and UBSan for host tests" ON)
+option(ENABLE_COVERAGE "Enable coverage instrumentation and reporting" OFF)
 
 if(ENABLE_SANITIZERS AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     message(FATAL_ERROR "ASan and UBSan require a Clang or GCC compiler")
+endif()
+
+if(ENABLE_COVERAGE AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    message(FATAL_ERROR "Coverage reporting requires a Clang or GCC compiler")
 endif()
 
 include(CTest)

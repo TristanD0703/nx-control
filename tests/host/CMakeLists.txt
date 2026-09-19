@@ -20,16 +20,6 @@ add_test(NAME nintendo_switch_controller_host_tests COMMAND nintendo_switch_cont
 
 target_link_libraries(nintendo_switch_controller_host_tests PRIVATE unity m)
 
-target_compile_options(nintendo_switch_controller_host_tests PRIVATE
-  --coverage
-  -O0
-  -g
-)
-
-target_link_options(nintendo_switch_controller_host_tests PRIVATE
-  --coverage
-)
-
 if(ENABLE_SANITIZERS)
   target_compile_options(nintendo_switch_controller_host_tests PRIVATE
     -fsanitize=address,undefined
@@ -42,9 +32,18 @@ if(ENABLE_SANITIZERS)
   )
 endif()
 
-find_program(GCOVR_EXECUTABLE gcovr)
+if(ENABLE_COVERAGE)
+  target_compile_options(nintendo_switch_controller_host_tests PRIVATE
+    --coverage
+    -O0
+    -g
+  )
 
-if(GCOVR_EXECUTABLE)
+  target_link_options(nintendo_switch_controller_host_tests PRIVATE
+    --coverage
+  )
+
+  find_program(GCOVR_EXECUTABLE gcovr REQUIRED)
   set(COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
 
   add_custom_target(coverage
@@ -60,6 +59,4 @@ if(GCOVR_EXECUTABLE)
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     DEPENDS nintendo_switch_controller_host_tests
   )
-else()
-  message(STATUS "gcovr not found; coverage target will not be available")
 endif()
