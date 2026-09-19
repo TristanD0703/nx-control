@@ -710,6 +710,123 @@ void multiple_button_presses_same_one_different_interleave() {
     TEST_ASSERT_TRUE(canceled_handles[0] == a_handle);
     TEST_ASSERT_TRUE(canceled_handles[1] == b_handle);
 }
+
+void can_press_all_buttons() {
+    StartTimerArgs_t start_timer_args[17] = {0};
+    void *start_timer_returns[17] = {0};
+
+    start_timer_spy.call_args = start_timer_args;
+    start_timer_spy.returns = start_timer_returns;
+
+    JoystickButtonState_t buttons[17] = {
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_Y 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_LCLICK 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_CAPTURE 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_HOME 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_RCLICK 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_PLUS 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_MINUS 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_ZR 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_ZL 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_R 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_L 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_X 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_A 
+        },
+        {
+          .op = BUTTON,
+          .duration_ms = 500,
+          .value_x = SWITCH_B 
+        },
+        {
+          .op = HAT,
+          .duration_ms = 500,
+          .value_x = HAT_TOP_LEFT 
+        },
+        {
+          .op = LSTICK,
+          .duration_ms = 500,
+          .value_x = STICK_MIN,
+          .value_y = STICK_MAX
+        },
+        {
+          .op = LSTICK,
+          .duration_ms = 500,
+          .value_x = STICK_MAX,
+          .value_y = STICK_MIN
+        },
+    };
+
+    ControllerState_t controller;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 17));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 17);
+
+    for (int i = 0; i < 17; i++) {
+        TEST_ASSERT_TRUE(is_button_pressed(&controller, &buttons[i]));
+    }
+
+    for (int i = 0; i < 17; i++) {
+        scheduler_callback(start_timer_args[i].info);
+    }
+
+    for (int i = 0; i < 17; i++) {
+        TEST_ASSERT_FALSE(is_button_pressed(&controller, &buttons[i]));
+    }
+}
+
 // "raw" updates to the controller does cancels all timers
 // if done externally
 
@@ -734,5 +851,6 @@ int main(void)
     RUN_TEST(multiple_button_presses_l_stick);
     RUN_TEST(multiple_button_presses_r_stick);
     RUN_TEST(multiple_button_presses_same_one_different_interleave);
+    RUN_TEST(can_press_all_buttons);
     return UNITY_END();
 }
