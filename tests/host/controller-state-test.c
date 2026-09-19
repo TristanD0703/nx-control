@@ -273,6 +273,31 @@ void buttons_press_properly() {
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
 
+void failed_timer_creation_does_not_leak_metadata() {
+    ControllerState_t controller;
+    JoystickButtonState_t button = {
+        .op = BUTTON,
+        .value_x = SWITCH_A,
+        .duration_ms = 500,
+    };
+    StartTimerArgs_t args[MAX_TIMER_COUNT] = {0};
+    AppTimerHandle_t returns[MAX_TIMER_COUNT] = {0};
+
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = returns;
+
+    for (uint8_t attempt = 0; attempt < MAX_TIMER_COUNT; attempt++) {
+        TEST_ASSERT_TRUE(press_button(&controller, &button));
+        TEST_ASSERT_NULL(controller.timer_handles[0]);
+
+        release_button(&controller, &button);
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(MAX_TIMER_COUNT, start_timer_spy.call_count);
+}
+
 void hat_buttons_press_properly() {
     TEST_ASSERT_FALSE(press_button(NULL, NULL));
      
@@ -715,6 +740,10 @@ void can_press_all_buttons() {
     StartTimerArgs_t start_timer_args[17] = {0};
     void *start_timer_returns[17] = {0};
 
+    for (uintptr_t i = 0; i < 17; i++) {
+        start_timer_returns[i] = (void *)(i + 1);
+    }
+
     start_timer_spy.call_args = start_timer_args;
     start_timer_spy.returns = start_timer_returns;
 
@@ -801,7 +830,7 @@ void can_press_all_buttons() {
           .value_y = STICK_MAX
         },
         {
-          .op = LSTICK,
+          .op = RSTICK,
           .duration_ms = 500,
           .value_x = STICK_MAX,
           .value_y = STICK_MIN
@@ -811,12 +840,31 @@ void can_press_all_buttons() {
     ControllerState_t controller;
     TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
 
-    TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 17));
+    TEST_ASSERT_TRUE(press_button(&controller, &buttons[14]));
+
+    AppTimerHandle_t get_timer_args[2] = {0};
+    TimerMetadata_t *l_stick_scan_returns[] = { start_timer_args[0].info };
+    get_timer_data_spy.call_args = get_timer_args;
+    get_timer_data_spy.returns = l_stick_scan_returns;
+    TEST_ASSERT_TRUE(press_button(&controller, &buttons[15]));
+
+    TimerMetadata_t *r_stick_scan_returns[] = {
+        start_timer_args[0].info,
+        start_timer_args[1].info,
+    };
+    get_timer_data_spy.call_count = 0;
+    get_timer_data_spy.returns = r_stick_scan_returns;
+    TEST_ASSERT_TRUE(press_button(&controller, &buttons[16]));
+
+    TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 14));
     TEST_ASSERT_TRUE(start_timer_spy.call_count == 17);
 
     for (int i = 0; i < 17; i++) {
         TEST_ASSERT_TRUE(is_button_pressed(&controller, &buttons[i]));
     }
+
+    AppTimerHandle_t canceled_handles[17] = {0};
+    cancel_timer_spy.call_args = canceled_handles;
 
     for (int i = 0; i < 17; i++) {
         scheduler_callback(start_timer_args[i].info);
@@ -1108,6 +1156,7 @@ int main(void)
     RUN_TEST(initializes_controller);
     RUN_TEST(correctly_determines_button_presses);
     RUN_TEST(buttons_press_properly);
+    RUN_TEST(failed_timer_creation_does_not_leak_metadata);
     RUN_TEST(hat_buttons_press_properly);
     RUN_TEST(stick_buttons_press_properly);
     RUN_TEST(multiple_button_presses_different);

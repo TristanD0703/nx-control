@@ -35,22 +35,16 @@ int init_controller(ControllerState_t *controller, const TimerInterface_t *timer
 }
 
 static void shutdown_timer(
-    ControllerState_t *controller, 
-    JoystickButtonState_t *operation, 
-    AppTimerHandle_t handle
+    ControllerState_t *controller,
+    AppTimerHandle_t handle,
+    TimerInfo_t *meta
 )  {
-    if (!handle) {
-        handle = controller->timer_metadata[operation->timer_index];
-
-        if (!handle)
-          return;
-    }
-
     controller->timer->cancel_timer(handle);
-    controller->timer_metadata[operation->timer_index] = NULL;
+    controller->timer_handles[meta->timer_index] = NULL;
+    free(meta);
 }
 
-int release_button(
+static int release_controller_state(
   ControllerState_t *controller, 
   JoystickButtonState_t *operation
 ) {
@@ -83,14 +77,36 @@ int release_button(
         }
     }
 
-    shutdown_timer(controller, operation, NULL);
     return 1;
+}
+
+int release_button(ControllerState_t *controller, JoystickButtonState_t *operation) {
+    release_controller_state(controller, operation);
+
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        AppTimerHandle_t curr_handle = controller->timer_handles[i];
+        if (!curr_handle) {
+            continue;
+        }
+
+        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_handle);
+        if (
+              info->operation.op == operation->op
+              && (operation->op != BUTTON || operation->value_x == info->operation.value_x)
+            )
+        {
+          shutdown_timer(controller, curr_handle, info);
+          return 1;
+        }
+    }
+
+    return 0;
 }
 
 void scheduler_callback(TimerMetadata_t *meta) {
     TimerInfo_t *info = (TimerInfo_t *)meta;
-    release_button(info->controller, &info->operation);
-    free(info);
+    release_controller_state(info->controller, &info->operation);
+    shutdown_timer(info->controller, info->handle, info);
 }
 
 static int is_button_pressed_internal(
@@ -138,7 +154,7 @@ static uint8_t create_button_timer(
 ) {
     uint8_t free_index = 0; 
     for (; free_index < MAX_TIMER_COUNT; free_index++) {
-        if (controller->timer_metadata[free_index] == NULL)
+        if (controller->timer_handles[free_index] == NULL)
             break; 
     }
 
@@ -156,15 +172,21 @@ static uint8_t create_button_timer(
     info->operation = *button;
     info->controller = controller;
     info->timer_index = free_index;
-    info->operation.timer_index = free_index;
-
 
     AppTimerHandle_t handle = controller->timer->create_and_start_timer(
         info->operation.duration_ms, 
         scheduler_callback,
         (TimerMetadata_t *)info
     );
-    controller->timer_metadata[free_index] = handle;
+
+    if (!handle) {
+        free(info);
+        return 3;
+    }
+
+    info->handle = handle;
+
+    controller->timer_handles[free_index] = handle;
 
     return 0;
 }
@@ -214,7 +236,7 @@ static void modify_timer_by_desired_state(
     AppTimerHandle_t matching_handle = NULL;
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        AppTimerHandle_t curr_timer = controller->timer_metadata[i];
+        AppTimerHandle_t curr_timer = controller->timer_handles[i];
 
         if (!curr_timer) {
             continue;
@@ -287,17 +309,13 @@ void reset_controller(ControllerState_t *controller) {
     }
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        AppTimerHandle_t curr_timer = controller->timer_metadata[i];
-        
+        AppTimerHandle_t curr_timer = controller->timer_handles[i];
         if (!curr_timer) {  
             continue;
         }
 
-        TimerMetadata_t *meta = controller->timer->get_timer_metadata(curr_timer); 
-        TimerInfo_t *info = (TimerInfo_t *)meta; 
-
-        shutdown_timer(controller, &(info->operation), curr_timer);
-        scheduler_callback(meta);
+        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_timer);
+        shutdown_timer(controller, curr_timer, info);
     }
 
     init_controller(controller, controller->timer);
@@ -314,7 +332,7 @@ void update_sticks_raw(
     }
 
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
-        AppTimerHandle_t handle = controller->timer_metadata[i];
+        AppTimerHandle_t handle = controller->timer_handles[i];
 
         if (!handle) {
             continue;
@@ -324,8 +342,7 @@ void update_sticks_raw(
         TimerInfo_t *info = (TimerInfo_t *)meta; 
 
         if (info->operation.op == which_stick) {
-            shutdown_timer(controller, &(info->operation), handle);
-            scheduler_callback(meta);
+            shutdown_timer(controller, handle, info);
         }
     }
     

@@ -60,7 +60,6 @@ typedef struct {
     uint16_t value_x;
     uint16_t value_y; // Only defined if op is L/RSTICK
     uint32_t duration_ms;
-    uint8_t timer_index;
 } JoystickButtonState_t;
 
 typedef struct {
@@ -75,7 +74,7 @@ typedef struct {
 
 typedef struct {
     JoystickState_t curr_state;
-    AppTimerHandle_t timer_metadata[MAX_TIMER_COUNT];
+    AppTimerHandle_t timer_handles[MAX_TIMER_COUNT];
     const TimerInterface_t *timer;
     uint32_t magic;
 } ControllerState_t;
@@ -85,6 +84,7 @@ typedef struct {
     ControllerState_t *controller;
     JoystickButtonState_t operation;
     uint8_t timer_index;
+    AppTimerHandle_t handle;
 } TimerInfo_t;
 
 /**
