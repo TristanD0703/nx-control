@@ -829,6 +829,47 @@ void can_press_all_buttons() {
 
 // "raw" updates to the controller does cancels all timers
 // if done externally
+void raw_updates_cancel_timers() {
+    ControllerState_t controller;
+    JoystickButtonState_t stick1;
+    JoystickButtonState_t stick2;
+    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+
+    stick1.op = LSTICK;
+    stick1.duration_ms = 500;
+    stick1.value_x = STICK_MIN;
+    stick1.value_y = STICK_MAX;
+
+    void *timer_handle =  (void *)1000;
+    void **timer_returns[] = { timer_handle };
+    StartTimerArgs_t args[1] = {0};
+    
+    start_timer_spy.call_args = args;
+    start_timer_spy.returns = timer_returns;
+
+    TEST_ASSERT_TRUE(press_button(&controller, &stick1));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick1));
+    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
+
+    stick2.op = LSTICK;
+    stick2.value_x = 100;
+    stick2.value_y = 50;
+
+    AppTimerHandle_t cancel_args[] = { 0 };
+    cancel_timer_spy.call_args = cancel_args;
+
+    AppTimerHandle_t get_timer_args[1] = { 0 };
+    TimerMetadata_t *get_timer_returns[] = { args[0].info };
+
+    get_timer_data_spy.call_args = get_timer_args;
+    get_timer_data_spy.returns = get_timer_returns;
+
+    update_sticks_raw(&controller, 100, 50, LSTICK);
+
+    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
+    TEST_ASSERT_TRUE(cancel_args[0] == timer_handle);
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
+}
 
 // Timers are created properly and API is handled correctly
 // Resetting controller means all timers are cancelled
@@ -852,5 +893,6 @@ int main(void)
     RUN_TEST(multiple_button_presses_r_stick);
     RUN_TEST(multiple_button_presses_same_one_different_interleave);
     RUN_TEST(can_press_all_buttons);
+    RUN_TEST(raw_updates_cancel_timers);
     return UNITY_END();
 }

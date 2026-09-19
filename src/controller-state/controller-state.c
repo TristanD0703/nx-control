@@ -45,7 +45,7 @@ static void shutdown_timer(
         if (!handle)
           return;
     }
-    
+
     controller->timer->cancel_timer(handle);
     controller->timer_metadata[operation->timer_index] = NULL;
 }
@@ -317,11 +317,12 @@ void update_sticks_raw(
             continue;
         }
 
-        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(handle); 
+        TimerMetadata_t *meta = controller->timer->get_timer_metadata(handle); 
+        TimerInfo_t *info = (TimerInfo_t *)meta; 
 
         if (info->operation.op == which_stick) {
-            controller->timer->cancel_timer(handle);
-            controller->timer_metadata[i] = NULL;
+            shutdown_timer(controller, &(info->operation), handle);
+            scheduler_callback(meta);
         }
     }
     
