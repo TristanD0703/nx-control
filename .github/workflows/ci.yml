@@ -54,6 +54,9 @@ jobs:
       - name: Run tests and generate coverage
         run: cmake --build build-test --target coverage
 
+      - name: Enforce 85% line coverage
+        run: jq --exit-status '.line_percent >= 85' build-test/coverage/summary.json
+
       - name: Publish coverage summary
         if: ${{ always() && hashFiles('build-test/coverage/summary.json') != '' }}
         run: |
