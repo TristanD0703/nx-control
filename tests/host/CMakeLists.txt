@@ -20,6 +20,11 @@ add_test(NAME nintendo_switch_controller_host_tests COMMAND nintendo_switch_cont
 
 target_link_libraries(nintendo_switch_controller_host_tests PRIVATE unity m)
 
+target_compile_definitions(nintendo_switch_controller_host_tests
+  PRIVATE
+    IS_HOST_TEST=1
+)
+
 if(ENABLE_SANITIZERS)
   target_compile_options(nintendo_switch_controller_host_tests PRIVATE
     -fsanitize=address,undefined
