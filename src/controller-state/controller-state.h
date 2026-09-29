@@ -12,7 +12,6 @@ typedef struct {
     double_t y;
 } Pos;
 
-
 typedef enum {
 	SWITCH_Y       = 0x01,
 	SWITCH_B       = 0x02,
@@ -108,11 +107,8 @@ int release_button(
  * Creates an event where the controller will send a button press to the
  * Nintendo Switch based on the specified button type, value, and duration (in ms).
  *
- * Any subsequent calls to this method while the same button is active will extend
- * its duration.
- *
- * duration < 0 will result in the button being held indefinitely until 
- * release_button is called on that same button
+ * Any subsequent calls to this method while the same button is active make the timer
+ * expire that many ms in the future (effectively creating a new timer)
   */
 int press_button(
   ControllerState_t *controller, 

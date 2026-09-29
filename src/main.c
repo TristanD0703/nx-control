@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include "class/hid/hid.h"
 #include "device/usbd.h"
-#include "esp_log.h"
+#include "app_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
@@ -62,19 +62,19 @@ void tud_hid_set_report_cb(
 
 void tud_suspend_cb(bool remote_wakeup_en)
 {
-    ESP_LOGI(TAG, "USB device suspended");
+    APP_LOGI(TAG, "USB device suspended");
     suspended = true;
     if (remote_wakeup_en) {
-        ESP_LOGI(TAG, "Remote wakeup available, press the button to wake up the Host");
+        APP_LOGI(TAG, "Remote wakeup available, press the button to wake up the Host");
         wakeup_host = true;
     } else {
-        ESP_LOGI(TAG, "Remote wakeup not available");
+        APP_LOGI(TAG, "Remote wakeup not available");
     }
 }
 
 void tud_resume_cb(void)
 {
-    ESP_LOGI(TAG, "USB device resumed");
+    APP_LOGI(TAG, "USB device resumed");
     suspended = false;
 }
 
@@ -125,7 +125,7 @@ static void controller_task(void* arg)
             press_button(&controller, &buttons_to_press[curr_button_i]);
             curr_button_i = (curr_button_i + 1) % 4;
             last_update = curr_tick;
-            ESP_LOGI(TAG, "Updating controller state");
+            APP_LOGI(TAG, "Updating controller state");
         }
 
         if (!tud_mounted() || !tud_hid_ready()) {
@@ -154,7 +154,7 @@ void app_main(void)
 
     const size_t string_desc_count = sizeof(hid_string_descriptor) / sizeof(hid_string_descriptor[0]);
 
-    ESP_LOGI(TAG, "USB initialization");
+    APP_LOGI(TAG, "USB initialization");
     tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
 
     tusb_cfg.descriptor.device = &desc_device;
@@ -164,9 +164,9 @@ void app_main(void)
 
 
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
-    ESP_LOGI(TAG, "USB initialization DONE");
+    APP_LOGI(TAG, "USB initialization DONE");
     
-    ESP_LOGI(TAG, "Hello!");
+    APP_LOGI(TAG, "Hello!");
     vTaskDelay(pdMS_TO_TICKS(100));
     xTaskCreate(controller_task, "Controller Task", 4096, NULL, 5, NULL);
 }

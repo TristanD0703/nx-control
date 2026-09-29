@@ -1,9 +1,11 @@
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../app_log.h"
 #include "controller-state.h"
 #include "../timer/timer.h"
 
@@ -77,6 +79,18 @@ static int release_controller_state(
         }
     }
 
+    APP_LOGI(
+        TAG,
+        "Controller state update -- buttons=0x%04" PRIx16 " lx=%" PRIu8 " ly=%" PRIu8
+        " rx=%" PRIu8 " ry=%" PRIu8 " hat=0x%02" PRIx8,
+        controller->curr_state.Button,
+        controller->curr_state.LX,
+        controller->curr_state.LY,
+        controller->curr_state.RX,
+        controller->curr_state.RY,
+        controller->curr_state.HAT
+    );
+
     return 1;
 }
 
@@ -95,16 +109,32 @@ int release_button(ControllerState_t *controller, JoystickButtonState_t *operati
               && (operation->op != BUTTON || operation->value_x == info->operation.value_x)
             )
         {
-          shutdown_timer(controller, curr_handle, info);
-          return 1;
+            APP_LOGI(
+                TAG,
+                "Releasing button. op=%u x=%" PRIu16 " y=%" PRIu16,
+                (unsigned int)info->operation.op,
+                info->operation.value_x,
+                info->operation.value_y
+            );
+
+            shutdown_timer(controller, curr_handle, info);
+            return 1;
         }
     }
 
+    APP_LOGW(TAG, "Tried to release a button that was not pressed");
     return 0;
 }
 
 void scheduler_callback(TimerMetadata_t *meta) {
     TimerInfo_t *info = (TimerInfo_t *)meta;
+    APP_LOGI(
+        TAG,
+        "Button timer expired. Releasing. op=%u x=%" PRIu16 " y=%" PRIu16,
+        (unsigned int)info->operation.op,
+        info->operation.value_x,
+        info->operation.value_y
+    );
     release_controller_state(info->controller, &info->operation);
     shutdown_timer(info->controller, info->handle, info);
 }
@@ -121,7 +151,7 @@ static int is_button_pressed_internal(
             return state->RX != STICK_CENTER || state->RY != STICK_CENTER;
         }
         case HAT: {
-            return button->value_x ? state->HAT == button->value_x : state->HAT != HAT_CENTER;
+            return button->value_x == state->HAT;
         }
         case BUTTON: {
             return (state->Button & button->value_x) != 0;
@@ -203,21 +233,33 @@ static void set_controller_state(
         case LSTICK: {
             controller->curr_state.LX = button->value_x;
             controller->curr_state.LY = button->value_y;
-            return;
+            break;
         }
         case RSTICK: {
             controller->curr_state.RX = button->value_x;
             controller->curr_state.RY = button->value_y;
-            return;
+            break;
         }
         case BUTTON: {
-          controller->curr_state.Button |= button->value_x;
-          return;
+            controller->curr_state.Button |= button->value_x;
+            break;
         }
         case HAT: {
           controller->curr_state.HAT = button->value_x;
         }
     }
+
+    APP_LOGI(
+        TAG,
+        "Controller state update -- buttons=0x%04" PRIx16 " lx=%" PRIu8 " ly=%" PRIu8
+        " rx=%" PRIu8 " ry=%" PRIu8 " hat=0x%02" PRIx8,
+        controller->curr_state.Button,
+        controller->curr_state.LX,
+        controller->curr_state.LY,
+        controller->curr_state.RX,
+        controller->curr_state.RY,
+        controller->curr_state.HAT
+    );
 }
 
 /*
@@ -258,11 +300,22 @@ static void modify_timer_by_desired_state(
     }
 
     if (!matching_timer || !matching_handle) {
+        APP_LOGW(TAG, "Tried to modify a timer for a button that is not pressed. Creating one now.");
         create_button_timer(controller, button);
         return;
     }
 
-    matching_timer->operation.duration_ms += button->duration_ms;
+    APP_LOGI(
+        TAG,
+        "Extending timer duration. button_op=%u button_x=%" PRIu16
+        " button_y=%" PRIu16 " extended_duration_ms=%" PRIu32,
+        (unsigned int)button->op,
+        button->value_x,
+        button->value_y,
+        button->duration_ms
+    );
+
+    matching_timer->operation.duration_ms = button->duration_ms;
     controller->timer->change_timer_duration(matching_handle, button->duration_ms);
 }
 
@@ -271,16 +324,26 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
         return 0;
     }
 
-    int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
+    APP_LOGI(
+        TAG,
+        "Pressing button. button_op=%u button_x=%" PRIu16 " button_y=%" PRIu16
+        " duration_ms=%" PRIu32,
+        (unsigned int)button->op,
+        button->value_x,
+        button->value_y,
+        button->duration_ms
+    );
 
     // Buttons that can have a "neutral" state are "pressed" if there aren't centered.
     // We'd like to modify that state instead of creating a new timer for it
-    int is_centerable_button = button->op != BUTTON;  
+    int button_pressed = button->op == HAT ? 
+      controller->curr_state.HAT != HAT_CENTER : 
+      is_button_pressed_internal(&controller->curr_state, button);
 
-    if (!button_pressed && !is_centerable_button) {
-        create_button_timer(controller, button);
-    } else {
+    if (button_pressed) {
         modify_timer_by_desired_state(controller, button);
+    } else {
+        create_button_timer(controller, button);
     }
 
     set_controller_state(controller, button);
@@ -303,6 +366,7 @@ int press_button_combo(
 }
 
 void reset_controller(ControllerState_t *controller) {
+    APP_LOGI(TAG, "Resetting controller.");
     if (!is_controller_initialized(controller)) {
         init_controller(controller, controller->timer);
         return;

@@ -569,12 +569,12 @@ void multiple_button_presses_l_stick() {
     // should modify the timer in place
     button1.op = LSTICK;
     button1.value_x = STICK_MIN;
-    button1.value_x = STICK_CENTER;
+    button1.value_y = STICK_CENTER;
     button1.duration_ms = 500;
 
     button2.op = LSTICK;
     button2.value_x = STICK_MAX;
-    button1.value_x = STICK_CENTER;
+    button1.value_y = STICK_CENTER;
     button2.duration_ms = 600;
 
     StartTimerArgs_t args[1] = { 0 };
@@ -626,12 +626,12 @@ void multiple_button_presses_r_stick() {
     // should modify the timer in place
     button1.op = RSTICK;
     button1.value_x = STICK_MIN;
-    button1.value_x = STICK_CENTER;
+    button1.value_y = STICK_CENTER;
     button1.duration_ms = 500;
 
     button2.op = RSTICK;
     button2.value_x = STICK_MAX;
-    button1.value_x = STICK_CENTER;
+    button1.value_y = STICK_CENTER;
     button2.duration_ms = 600;
 
     StartTimerArgs_t args[1] = { 0 };
