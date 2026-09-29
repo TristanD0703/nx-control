@@ -315,7 +315,7 @@ static void modify_timer_by_desired_state(
         button->duration_ms
     );
 
-    matching_timer->operation.duration_ms += button->duration_ms;
+    matching_timer->operation.duration_ms = button->duration_ms;
     controller->timer->change_timer_duration(matching_handle, button->duration_ms);
 }
 
@@ -334,12 +334,12 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
         button->duration_ms
     );
 
+    // Buttons that can have a "neutral" state are "pressed" if there aren't centered.
+    // We'd like to modify that state instead of creating a new timer for it
     int button_pressed = button->op == HAT ? 
       controller->curr_state.HAT != HAT_CENTER : 
       is_button_pressed_internal(&controller->curr_state, button);
 
-    // Buttons that can have a "neutral" state are "pressed" if there aren't centered.
-    // We'd like to modify that state instead of creating a new timer for it
     if (button_pressed) {
         modify_timer_by_desired_state(controller, button);
     } else {
