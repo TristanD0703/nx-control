@@ -151,7 +151,7 @@ static int is_button_pressed_internal(
             return state->RX != STICK_CENTER || state->RY != STICK_CENTER;
         }
         case HAT: {
-            return state->HAT != HAT_CENTER && state->HAT == button->value_x;
+            return button->value_x == state->HAT;
         }
         case BUTTON: {
             return (state->Button & button->value_x) != 0;
@@ -334,7 +334,9 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
         button->duration_ms
     );
 
-    int button_pressed = is_button_pressed_internal(&controller->curr_state, button);
+    int button_pressed = button->op == HAT ? 
+      controller->curr_state.HAT != HAT_CENTER : 
+      is_button_pressed_internal(&controller->curr_state, button);
 
     // Buttons that can have a "neutral" state are "pressed" if there aren't centered.
     // We'd like to modify that state instead of creating a new timer for it
