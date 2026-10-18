@@ -14,6 +14,9 @@
 #include "driver/gpio.h"
 #include "controller-state/controller-state.h"
 #include "hid_descriptors.h"
+#include "nvs_flash.h"
+#include "bluetooth/gap.h"
+
 
 #undef configUSE_TIMERS
 #define configUSE_TIMERS 1
@@ -22,9 +25,9 @@
 
 static const char *TAG = "[nintendo-switch-usb-controller]";
 
+// TODO: Refactor all of this usb stuff into its own thing
 static bool suspended = false;
 static bool wakeup_host = false;
-
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 {
@@ -152,6 +155,19 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gpio_config(&boot_button_config));
 
+    
+    /* NVS flash initialization */
+    int ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
+        return;
+    }
+
     const size_t string_desc_count = sizeof(hid_string_descriptor) / sizeof(hid_string_descriptor[0]);
 
     APP_LOGI(TAG, "USB initialization");
@@ -165,8 +181,10 @@ void app_main(void)
 
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     APP_LOGI(TAG, "USB initialization DONE");
-    
-    APP_LOGI(TAG, "Hello!");
+   
+    setup_bluetooth();
+
+    create_bluetooth_task();
     vTaskDelay(pdMS_TO_TICKS(100));
     xTaskCreate(controller_task, "Controller Task", 4096, NULL, 5, NULL);
 }

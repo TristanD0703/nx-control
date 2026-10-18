@@ -1081,6 +1081,16 @@ CONFIG_BT_CONTROLLER_ENABLED=y
 # default:
 CONFIG_BT_ALARM_MAX_NUM=50
 # default:
+CONFIG_BT_BLE_HOST_ALLOW_SUB_SPEC_MIN_CONN_INT=y
+
+#
+# OSAL (OS abstraction layer)
+#
+# default:
+# CONFIG_BT_OSAL_ENABLED is not set
+# end of OSAL (OS abstraction layer)
+
+# default:
 CONFIG_BT_SMP_CRYPTO_STACK_TINYCRYPT=y
 # default:
 # CONFIG_BT_SMP_CRYPTO_STACK_MBEDTLS is not set
@@ -1174,6 +1184,16 @@ CONFIG_BT_NIMBLE_SM_SC_ONLY=0
 CONFIG_BT_NIMBLE_MAX_BONDS=3
 # default:
 # CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION is not set
+# default:
+CONFIG_BT_NIMBLE_SMP_HARDENED_REPAIRING=y
+# default:
+# CONFIG_BT_NIMBLE_SMP_REQUIRE_ENC_BEFORE_REPAIR is not set
+# default:
+CONFIG_BT_NIMBLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_CENTRAL=y
+# default:
+# CONFIG_BT_NIMBLE_SMP_REMOVE_BOND_ON_PAIR_FAIL_AS_PRPH is not set
+# default:
+# CONFIG_BT_NIMBLE_SMP_UNBOND_ON_KEY_MISSING is not set
 # end of Security (SMP)
 
 #
@@ -1205,6 +1225,8 @@ CONFIG_BT_NIMBLE_HS_STOP_TIMEOUT_MS=2000
 CONFIG_BT_NIMBLE_USE_ESP_TIMER=y
 # default:
 # CONFIG_BT_NIMBLE_HS_FLOW_CTRL is not set
+# default:
+CONFIG_BT_NIMBLE_DEFER_CONN_EVENTS_UNTIL_CONNECT=y
 # end of GAP
 
 #
@@ -1320,6 +1342,10 @@ CONFIG_BT_NIMBLE_DIS_SERVICE=y
 # default:
 # CONFIG_BT_NIMBLE_SVC_DIS_PNP_ID is not set
 # default:
+CONFIG_BT_NIMBLE_SVC_DIS_IEEE=y
+# default:
+CONFIG_BT_NIMBLE_SVC_DIS_UDI=y
+# default:
 # CONFIG_BT_NIMBLE_SVC_DIS_INCLUDED is not set
 # default:
 CONFIG_BT_NIMBLE_GAP_SERVICE=y
@@ -1421,6 +1447,8 @@ CONFIG_BT_NIMBLE_CPFD_CAFD=y
 CONFIG_BT_NIMBLE_RECONFIG_MTU=y
 # default:
 # CONFIG_BT_NIMBLE_LOW_SPEED_MODE is not set
+# default:
+# CONFIG_BT_NIMBLE_GAP_ALLOW_ADV_RESTART is not set
 # end of Extra Features
 
 #
@@ -1677,6 +1705,13 @@ CONFIG_BT_CTRL_BLE_MIN_CONN_INTERVAL_ENABLE=y
 
 # default:
 # CONFIG_BT_HCI_LOG_DEBUG_EN is not set
+
+#
+# BLE Profiles
+#
+# default:
+# CONFIG_BT_PRF_TASK_ENABLED is not set
+# end of BLE Profiles
 # end of Bluetooth
 
 # default:
@@ -1763,6 +1798,8 @@ CONFIG_SPI_SLAVE_ISR_IN_IRAM=y
 #
 # default:
 # CONFIG_UHCI_ISR_HANDLER_IN_IRAM is not set
+# default:
+# CONFIG_UHCI_RECV_FUNC_IN_IRAM is not set
 # default:
 # CONFIG_UHCI_ISR_CACHE_SAFE is not set
 # default:
@@ -3638,6 +3675,14 @@ CONFIG_MBEDTLS_LARGE_KEY_SOFTWARE_MPI=y
 CONFIG_MBEDTLS_MPI_USE_INTERRUPT=y
 # default:
 CONFIG_MBEDTLS_MPI_INTERRUPT_LEVEL=0
+
+#
+# Security hardening
+#
+# default:
+# CONFIG_MBEDTLS_CONSTANT_TIME_PRIME_GEN is not set
+# end of Security hardening
+
 # default:
 CONFIG_MBEDTLS_HARDWARE_AES=y
 # default:
@@ -3730,6 +3775,8 @@ CONFIG_PTHREAD_TASK_NAME_DEFAULT="pthread"
 #
 # default:
 CONFIG_SD_ENABLE_SDIO_SUPPORT=y
+# default:
+CONFIG_SD_READY_POLL_PERIOD_START_US=100
 # end of SD Protocol Layer Configuration
 
 #
