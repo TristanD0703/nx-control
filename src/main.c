@@ -187,4 +187,6 @@ void app_main(void)
     create_bluetooth_task();
     vTaskDelay(pdMS_TO_TICKS(100));
     xTaskCreate(controller_task, "Controller Task", 4096, NULL, 5, NULL);
+
+    for(;;);
 }

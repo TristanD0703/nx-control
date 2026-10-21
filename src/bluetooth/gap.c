@@ -9,22 +9,21 @@
 #include "services/gap/ble_svc_gap.h"
 #include "../app_log.h"
 #include "gap.h"
+#include "conn_manager.h"
 
 #define TAG "[GAP]"
 #define BLE_GAP_LE_ROLE_PERIPHERAL 0x00
 #define BLE_GAP_APPEARANCE_GAMEPAD 0x03C4
 
 // static const int32_t ADVERTISING_DURATION_MS = 2000;
-static const char *DEVICE_NAME = "Hello World!";
+static const char *DEVICE_NAME = "Nint. Sw. Cont.";
 
 // Library methods
 void ble_store_config_init(void);
 
 // internal methods
-int run_advertisement(int32_t duration);
 static void on_stack_reset(int reason);
 static void on_stack_sync(void);
-static int gap_event_callback(struct ble_gap_event *event, void *arg);
 static int retrieve_and_remember_address();
 static int store_advertisement_configuration();
 static void run_bluetooth();
@@ -44,6 +43,7 @@ static struct ble_hs_adv_fields response_fields = { 0 };
 int setup_bluetooth() {
     int rc = 0;
     ble_store_config_init();
+    init_conn_manager();
 
     // Initialize nimble
     rc = nimble_port_init();
@@ -108,43 +108,6 @@ static void on_stack_sync() {
     run_bluetooth();
 }
 
-// TODO: Handle GAP events
-// Connect (success)
-// Connect (failure)
-// Disconnect
-// Advertising complete
-// TODO: Device subscribed
-// TODO: Connection updated
-static int gap_event_callback(struct ble_gap_event *event, void *arg) {
-    char * callback_type_name = "UNKNOWN";
-
-    switch (event->type) {
-    case BLE_GAP_EVENT_CONNECT: 
-    {
-        callback_type_name = "CONNECT";
-        if (event->connect.status != 0) {
-            APP_LOGW(TAG, "Connection failed.");
-        }
-        break;
-    }
-    case BLE_GAP_EVENT_DISCONNECT:
-    {
-        callback_type_name = "DISCONNECT";
-        break; 
-    }
-    case BLE_GAP_EVENT_ADV_COMPLETE:
-    {
-        callback_type_name = "ADV_COMPLETE";
-        break; 
-    }
-    }
-
-    if (!ble_gap_adv_active()) {
-        run_advertisement(BLE_HS_FOREVER);
-    }
-    APP_LOGI(TAG, "GAP callback with event type %s", callback_type_name);
-    return 0;
-}
 
 /**
  * Sends beacon for all devices in range to know about this device
