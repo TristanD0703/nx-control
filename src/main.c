@@ -182,11 +182,13 @@ void app_main(void)
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     APP_LOGI(TAG, "USB initialization DONE");
    
-    setup_bluetooth();
-
-    create_bluetooth_task();
-    vTaskDelay(pdMS_TO_TICKS(100));
     xTaskCreate(controller_task, "Controller Task", 4096, NULL, 5, NULL);
 
-    for(;;);
+    ret = setup_bluetooth();
+    if (ret != 0) {
+        APP_LOGE(TAG, "Failed to initialize Bluetooth. code %d", ret);
+        return;
+    }
+
+    create_bluetooth_task();
 }

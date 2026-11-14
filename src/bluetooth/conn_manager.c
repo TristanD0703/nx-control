@@ -90,7 +90,7 @@ static void handle_disconnect(struct ble_gap_event *event) {
     for (uint8_t i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
         const uint16_t conn = connection_handles[i];
 
-        if (conn == event->connect.conn_handle) {
+        if (conn == event->disconnect.conn.conn_handle) {
             connection_handles[i] = BLE_HS_CONN_HANDLE_NONE;
             break;
         }
