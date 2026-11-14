@@ -17,8 +17,8 @@ int is_controller_initialized(const ControllerState_t *state) {
     return state != NULL && state->magic == MAGIC_VALUE;
 }
 
-int init_controller(ControllerState_t *controller, const TimerInterface_t *timer) {
-    if (!controller || !timer) {
+int init_controller(ControllerState_t *controller) {
+    if (!controller) {
         return 0;
     }
 
@@ -31,7 +31,6 @@ int init_controller(ControllerState_t *controller, const TimerInterface_t *timer
         .HAT = HAT_CENTER 
     };
 
-    controller->timer = timer;
     controller->magic = MAGIC_VALUE;
     return 1;
 }
@@ -41,7 +40,7 @@ static void shutdown_timer(
     AppTimerHandle_t handle,
     TimerInfo_t *meta
 )  {
-    controller->timer->cancel_timer(handle);
+    cancel_timer(handle);
     controller->timer_handles[meta->timer_index] = NULL;
     free(meta);
 }
@@ -103,7 +102,7 @@ int release_button(ControllerState_t *controller, JoystickButtonState_t *operati
             continue;
         }
 
-        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_handle);
+        TimerInfo_t *info = (TimerInfo_t *)get_timer_metadata(curr_handle);
         if (
               info->operation.op == operation->op
               && (operation->op != BUTTON || operation->value_x == info->operation.value_x)
@@ -203,7 +202,7 @@ static uint8_t create_button_timer(
     info->controller = controller;
     info->timer_index = free_index;
 
-    AppTimerHandle_t handle = controller->timer->create_and_start_timer(
+    AppTimerHandle_t handle = create_and_start_timer(
         info->operation.duration_ms, 
         scheduler_callback,
         (TimerMetadata_t *)info
@@ -284,7 +283,7 @@ static void modify_timer_by_desired_state(
             continue;
         }
 
-        TimerInfo_t *curr_info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_timer);
+        TimerInfo_t *curr_info = (TimerInfo_t *)get_timer_metadata(curr_timer);
 
         int is_centerable_button = curr_info->operation.op != BUTTON;  
 
@@ -316,7 +315,7 @@ static void modify_timer_by_desired_state(
     );
 
     matching_timer->operation.duration_ms = button->duration_ms;
-    controller->timer->change_timer_duration(matching_handle, button->duration_ms);
+    change_timer_duration(matching_handle, button->duration_ms);
 }
 
 int press_button(ControllerState_t *controller, JoystickButtonState_t *button) { 
@@ -368,7 +367,7 @@ int press_button_combo(
 void reset_controller(ControllerState_t *controller) {
     APP_LOGI(TAG, "Resetting controller.");
     if (!is_controller_initialized(controller)) {
-        init_controller(controller, controller->timer);
+        init_controller(controller);
         return;
     }
 
@@ -378,11 +377,11 @@ void reset_controller(ControllerState_t *controller) {
             continue;
         }
 
-        TimerInfo_t *info = (TimerInfo_t *)controller->timer->get_timer_metadata(curr_timer);
+        TimerInfo_t *info = (TimerInfo_t *)get_timer_metadata(curr_timer);
         shutdown_timer(controller, curr_timer, info);
     }
 
-    init_controller(controller, controller->timer);
+    init_controller(controller);
 }
 
 void update_sticks_raw(
@@ -402,7 +401,7 @@ void update_sticks_raw(
             continue;
         }
 
-        TimerMetadata_t *meta = controller->timer->get_timer_metadata(handle); 
+        TimerMetadata_t *meta = get_timer_metadata(handle);
         TimerInfo_t *info = (TimerInfo_t *)meta; 
 
         if (info->operation.op == which_stick) {

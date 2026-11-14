@@ -6,7 +6,6 @@
 
 #define MAX_TIMER_COUNT 17
 
-typedef struct TimerInterface TimerInterface_t;
 typedef struct {
     double_t x;
     double_t y;
@@ -74,7 +73,6 @@ typedef struct {
 typedef struct {
     JoystickState_t curr_state;
     AppTimerHandle_t timer_handles[MAX_TIMER_COUNT];
-    const TimerInterface_t *timer;
     uint32_t magic;
 } ControllerState_t;
 
@@ -87,13 +85,14 @@ typedef struct {
 } TimerInfo_t;
 
 /**
- *  Initializes the controller such that no buttons are pressed and 
- *  sticks are in the center. Timer Interface is not preserved across
- *  init calls.
+ *  Initializes the controller such that no buttons are pressed and
+ *  sticks are in the center.
  *
  *  Returns zero if init fails
   */
-int init_controller(ControllerState_t *controller, const TimerInterface_t *timer);
+int init_controller(ControllerState_t *controller);
+
+void scheduler_callback(TimerMetadata_t *meta);
 
 /**
  * Stops pressing the button and cancels the timer(s) related to this button

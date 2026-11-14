@@ -46,6 +46,10 @@ The controller has the ability to test both on device (microcontroller) and on t
 
 ### Host Tests
 
+Host tests require a C compiler, CMake 3.22 or newer, and Ruby 3.0 or newer.
+CMake downloads pinned versions of Unity and CMock during configuration. Ruby
+runs CMock's mock generator during the build; it is not needed to run the test executable.
+
 First, much like the main project, we need to build the tests using CMake.
 Use the following command:
 
@@ -58,3 +62,15 @@ Then, run the tests:
 ```bash
 ctest --test-dir build-test
 ```
+
+#### Generating mocks
+
+Add dependency header paths to `HOST_MOCK_HEADERS` in
+`tests/host/CMakeLists.txt` to generate and compile their mocks into the existing
+host-test executable. Paths are relative to `tests/host`, for example
+`../../src/storage/storage.h` for a future storage module.
+
+Each header file being mocked with CMock will generate `Mock<name>.c` and
+`Mock<name>.h`. Each test using that mock is required to call `Mock<name>_Init()`
+before each test case, and `Mock<name>_Verify()`, and `Mock<name>_Destroy()` after
+each test case for the mocks to behave properly.
