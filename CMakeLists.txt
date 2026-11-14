@@ -8,5 +8,7 @@ set(EXTRA_COMPONENT_DIRS src)
 set(COMPONENTS src)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(tusb_hid)
+idf_build_set_property(MINIMAL_BUILD ON)
+
+project(nintendo_switch_controller)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
