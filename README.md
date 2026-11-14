@@ -70,15 +70,7 @@ Add dependency header paths to `HOST_MOCK_HEADERS` in
 host-test executable. Paths are relative to `tests/host`, for example
 `../../src/storage/storage.h` for a future storage module.
 
-The `target_cmock_mocks()` CMake helper creates `Mock<name>.c` and
-`Mock<name>.h` under the target's `generated/<target>/mocks` build directory.
-It regenerates them when the input header or `tests/cmock.yml` changes, and adds
-the generated sources and include directories to the executable. Each mocked
-API must have only one implementation linked into the executable, so replace
-its real or fake source with the generated mock when adopting it.
-
-Tests using a mock include its generated header and call `Mock<name>_Init()`,
-`Mock<name>_Verify()`, and `Mock<name>_Destroy()` around each test case to reset
-and verify expectations. The controller-state suite uses `Mocktimer.h`, generated
-from `src/timer/timer.h`, with CMock lifecycle calls in `setUp()` and `tearDown()`.
-It captures scheduled callbacks so tests can simulate timer expiration directly.
+Each header file being mocked with CMock will generate `Mock<name>.c` and
+`Mock<name>.h`. Each test using that mock is required to call `Mock<name>_Init()`
+before each test case, and `Mock<name>_Verify()`, and `Mock<name>_Destroy()` after
+each test case for the mocks to behave properly.
