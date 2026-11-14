@@ -7,7 +7,7 @@ FunctionSpy_t get_timer_data_spy = {0};
 FunctionSpy_t change_timer_duration_spy = {0};
 FunctionSpy_t cancel_timer_spy = {0};
 
-TimerMetadata_t *get_timer_metadata_stub(AppTimerHandle_t handle) {
+TimerMetadata_t *get_timer_metadata(AppTimerHandle_t handle) {
     const uint32_t call_count = get_timer_data_spy.call_count;
     AppTimerHandle_t *call_args = (AppTimerHandle_t *) get_timer_data_spy.call_args;
     TimerMetadata_t **curr_ret = (TimerMetadata_t **) get_timer_data_spy.returns;
@@ -20,7 +20,7 @@ TimerMetadata_t *get_timer_metadata_stub(AppTimerHandle_t handle) {
     return ret;
 }
 
-AppTimerHandle_t create_and_start_timer_stub(
+AppTimerHandle_t create_and_start_timer(
     uint32_t duration,
     SchedulerCallback_t cb,
     TimerMetadata_t *info
@@ -42,7 +42,7 @@ AppTimerHandle_t create_and_start_timer_stub(
 }
 
 
-void change_timer_duration_stub(AppTimerHandle_t handle, uint32_t duration_ms) {
+void change_timer_duration(AppTimerHandle_t handle, uint32_t duration_ms) {
     const uint32_t call_count = change_timer_duration_spy.call_count;
     ChangeTimerDurationArgs_t *call_args = (ChangeTimerDurationArgs_t *) change_timer_duration_spy.call_args;
 
@@ -56,7 +56,7 @@ void change_timer_duration_stub(AppTimerHandle_t handle, uint32_t duration_ms) {
 }
 
 
-void cancel_timer_stub(AppTimerHandle_t handle) {
+void cancel_timer(AppTimerHandle_t handle) {
     const uint32_t call_count = cancel_timer_spy.call_count;
     AppTimerHandle_t *call_args = (AppTimerHandle_t *) cancel_timer_spy.call_args;
 
@@ -64,10 +64,3 @@ void cancel_timer_stub(AppTimerHandle_t handle) {
     call_args[call_count] = handle;
     cancel_timer_spy.call_count += 1; 
 }
-
-const TimerInterface_t fake_timer_impl = {
-    .cancel_timer = cancel_timer_stub,
-    .change_timer_duration = change_timer_duration_stub,
-    .create_and_start_timer = create_and_start_timer_stub,
-    .get_timer_metadata = get_timer_metadata_stub 
-};

@@ -23,7 +23,7 @@ void tearDown() {
 
 void serializes_controller_state() {
     ControllerState_t test_controller;
-    TEST_ASSERT_TRUE(init_controller(&test_controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&test_controller));
 
     JoystickState_t buffer;
     serialize_controller_state(&test_controller, &buffer);
@@ -34,19 +34,13 @@ void serializes_controller_state() {
 
 void initializes_controller() {
     // Guards against invalid inputs
-    // Also implies that invalid inputs does not modify state
-    ControllerState_t test_controller;
+    ControllerState_t test_controller = {0};
 
-    TEST_ASSERT_FALSE(init_controller(NULL, NULL));
-    TEST_ASSERT_FALSE(is_controller_initialized(&test_controller));
-    TEST_ASSERT_FALSE(init_controller(&test_controller, NULL));
-    TEST_ASSERT_FALSE(is_controller_initialized(&test_controller));
-    TEST_ASSERT_FALSE(init_controller(NULL, &fake_timer_impl));
+    TEST_ASSERT_FALSE(init_controller(NULL));
     TEST_ASSERT_FALSE(is_controller_initialized(&test_controller));
 
     // Properly initializes controller
-    TEST_ASSERT_TRUE(init_controller(&test_controller, &fake_timer_impl));
-    TEST_ASSERT_TRUE(test_controller.timer == &fake_timer_impl);
+    TEST_ASSERT_TRUE(init_controller(&test_controller));
     TEST_ASSERT_TRUE(is_controller_initialized(&test_controller));
    
     JoystickState_t state;
@@ -66,14 +60,14 @@ void initializes_controller() {
 }
 
 void correctly_determines_button_presses() {
-    ControllerState_t controller;
+    ControllerState_t controller = {0};
     JoystickButtonState_t check_button;
 
     // Controller must be initialized
     TEST_ASSERT_FALSE(is_button_pressed(&controller, NULL));
 
     // initialized controller means no buttons pressed
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     check_button.op = LSTICK;
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &check_button));
@@ -227,13 +221,13 @@ void correctly_determines_button_presses() {
 // Ensures that timers created will always fit in stack-allocated buffer
 void buttons_press_properly() {
     TEST_ASSERT_FALSE(press_button(NULL, NULL));
-     
-    ControllerState_t controller;
+
+    ControllerState_t controller = {0};
     JoystickButtonState_t button; 
     TEST_ASSERT_FALSE(press_button(&controller, NULL));
     TEST_ASSERT_FALSE(press_button(NULL, &button));
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // We're gonna press A for 500 ms
     button.op = BUTTON;
@@ -283,7 +277,7 @@ void failed_timer_creation_does_not_leak_metadata() {
     StartTimerArgs_t args[MAX_TIMER_COUNT] = {0};
     AppTimerHandle_t returns[MAX_TIMER_COUNT] = {0};
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     start_timer_spy.call_args = args;
     start_timer_spy.returns = returns;
@@ -300,13 +294,13 @@ void failed_timer_creation_does_not_leak_metadata() {
 
 void hat_buttons_press_properly() {
     TEST_ASSERT_FALSE(press_button(NULL, NULL));
-     
-    ControllerState_t controller;
+
+    ControllerState_t controller = {0};
     JoystickButtonState_t button; 
     TEST_ASSERT_FALSE(press_button(&controller, NULL));
     TEST_ASSERT_FALSE(press_button(NULL, &button));
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // We're gonna press bottom d-pad for 500 ms
     button.op = HAT;
@@ -344,13 +338,13 @@ void hat_buttons_press_properly() {
 
 void stick_buttons_press_properly() {
     TEST_ASSERT_FALSE(press_button(NULL, NULL));
-     
-    ControllerState_t controller;
+
+    ControllerState_t controller = {0};
     JoystickButtonState_t button; 
     TEST_ASSERT_FALSE(press_button(&controller, NULL));
     TEST_ASSERT_FALSE(press_button(NULL, &button));
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // We're gonna move the stick up for 500 ms
     button.op = LSTICK;
@@ -388,14 +382,14 @@ void stick_buttons_press_properly() {
 
 void multiple_button_presses_different() {
     TEST_ASSERT_FALSE(press_button(NULL, NULL));
-     
-    ControllerState_t controller;
+
+    ControllerState_t controller = {0};
     JoystickButtonState_t button; 
     JoystickButtonState_t button2; 
     TEST_ASSERT_FALSE(press_button(&controller, NULL));
     TEST_ASSERT_FALSE(press_button(NULL, &button));
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // We're gonna move the stick up for 1 sec and pressing A for 500 ms
     button.op = LSTICK;
@@ -448,7 +442,7 @@ void multiple_button_presses_same() {
     JoystickButtonState_t button1;
     JoystickButtonState_t button2;
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // Pressing the A button twice with different timer lengths
     // First button should do as normal
@@ -503,7 +497,7 @@ void multiple_button_presses_hat() {
     JoystickButtonState_t button1;
     JoystickButtonState_t button2;
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // HAT buttons must only have one selected direction at a time 
     // (pressing left then right results in right)
@@ -561,7 +555,7 @@ void multiple_button_presses_l_stick() {
     JoystickButtonState_t button1;
     JoystickButtonState_t button2;
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // stick buttons must only have one selected direction at a time 
     // (pressing left then right results in right)
@@ -618,7 +612,7 @@ void multiple_button_presses_r_stick() {
     JoystickButtonState_t button1;
     JoystickButtonState_t button2;
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // stick buttons must only have one selected direction at a time 
     // (pressing left then right results in right)
@@ -675,7 +669,7 @@ void multiple_button_presses_same_one_different_interleave() {
     JoystickButtonState_t button2;
     JoystickButtonState_t button3;
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // Pressing the A button twice with different timer lengths
     // First button should do as normal
@@ -838,7 +832,7 @@ void can_press_all_buttons() {
     };
 
     ControllerState_t controller;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     TEST_ASSERT_TRUE(press_button(&controller, &buttons[14]));
 
@@ -881,7 +875,7 @@ void raw_updates_cancel_timers() {
     ControllerState_t controller;
     JoystickButtonState_t stick1;
     JoystickButtonState_t stick2;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     stick1.op = LSTICK;
     stick1.duration_ms = 500;
@@ -926,7 +920,7 @@ void raw_stick_updates_cancel_only_stick() {
     ControllerState_t controller;
     JoystickButtonState_t stick1;
     JoystickButtonState_t stick2;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     stick1.op = BUTTON;
     stick1.duration_ms = 500;
@@ -969,7 +963,7 @@ void raw_stick_updates_cancel_only_stick() {
 void deg_mag_updates_properly() {
     ControllerState_t controller;
     JoystickButtonState_t stick1;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     stick1.op = RSTICK;
     stick1.duration_ms = 500;
@@ -1055,7 +1049,7 @@ void deg_mag_updates_properly() {
 
 void full_magnitude_near_positive_axes_does_not_overflow() {
     ControllerState_t controller;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     update_sticks_deg_mag_raw(&controller, 1, 1, RSTICK);
     TEST_ASSERT_TRUE(controller.curr_state.RX == STICK_MAX);
@@ -1078,7 +1072,7 @@ void deg_mag_stick_press_properly() {
     ControllerState_t controller;
     JoystickButtonState_t button; 
 
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     // We're gonna press up for 500 ms
     button.op = LSTICK;
@@ -1124,7 +1118,7 @@ void resets_controller() {
         { .op = BUTTON, .duration_ms = 500, .value_x = SWITCH_X }
     };
     ControllerState_t controller;
-    TEST_ASSERT_TRUE(init_controller(&controller, &fake_timer_impl));
+    TEST_ASSERT_TRUE(init_controller(&controller));
 
     void *a_handle = (void *)1000;
     void *b_handle = (void *)1001;
