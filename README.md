@@ -79,4 +79,6 @@ its real or fake source with the generated mock when adopting it.
 
 Tests using a mock include its generated header and call `Mock<name>_Init()`,
 `Mock<name>_Verify()`, and `Mock<name>_Destroy()` around each test case to reset
-and verify expectations. `HOST_MOCK_HEADERS` starts empty.
+and verify expectations. The controller-state suite uses `Mocktimer.h`, generated
+from `src/timer/timer.h`, with CMock lifecycle calls in `setUp()` and `tearDown()`.
+It captures scheduled callbacks so tests can simulate timer expiration directly.

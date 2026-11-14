@@ -11,13 +11,14 @@ target_sources(nintendo_switch_controller_host_tests
   PRIVATE
     controller-state-test.c
     ../../src/controller-state/controller-state.c
-    fake-timer.c
   PUBLIC
     ../../src/timer/timer.h
 )
 
 # List dependency headers here when their implementations should be mocked.
-set(HOST_MOCK_HEADERS)
+set(HOST_MOCK_HEADERS
+    ../../src/timer/timer.h
+)
 target_cmock_mocks(nintendo_switch_controller_host_tests ${HOST_MOCK_HEADERS})
 
 add_test(NAME nintendo_switch_controller_host_tests COMMAND nintendo_switch_controller_host_tests)
@@ -63,8 +64,10 @@ if(ENABLE_COVERAGE)
       --root ${CMAKE_SOURCE_DIR}/..
       --object-directory ${CMAKE_BINARY_DIR}
       --exclude ${CMAKE_SOURCE_DIR}/
+      --exclude ${CMAKE_BINARY_DIR}/
       --html-details ${COVERAGE_DIR}/index.html
       --json-summary ${COVERAGE_DIR}/summary.json
+      ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     DEPENDS nintendo_switch_controller_host_tests
   )

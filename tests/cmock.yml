@@ -6,3 +6,5 @@
     - :return_thru_ptr
     - :array
   :when_ptr: :smart
+  :treat_as:
+    AppTimerHandle_t: PTR

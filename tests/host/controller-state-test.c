@@ -1,25 +1,60 @@
 #include <string.h>
-#include <stdlib.h>
 
-#include "timer/timer.h"
 #include "unity.h"
 #include "controller-state/controller-state.h"
-#include "fake-timer.h"
-#include "unity_internals.h"
+#include "Mocktimer.h"
 
-void setUp() {
-    start_timer_spy = (FunctionSpy_t){0};
-    get_timer_data_spy = (FunctionSpy_t){0};
-    change_timer_duration_spy = (FunctionSpy_t){0};
-    cancel_timer_spy = (FunctionSpy_t){0};
-} 
+typedef struct {
+    SchedulerCallback_t callback;
+    TimerMetadata_t *metadata;
+} CapturedTimer_t;
 
-void tearDown() {
-    start_timer_spy = (FunctionSpy_t){0};
-    get_timer_data_spy = (FunctionSpy_t){0};
-    change_timer_duration_spy = (FunctionSpy_t){0};
-    cancel_timer_spy = (FunctionSpy_t){0};
-} 
+static CapturedTimer_t captured_timers[MAX_TIMER_COUNT];
+
+static AppTimerHandle_t capture_timer(
+    uint32_t duration,
+    SchedulerCallback_t callback,
+    TimerMetadata_t *metadata,
+    int call_index
+) {
+    (void)duration; // CMock checks the expected duration before this callback.
+    TEST_ASSERT_LESS_THAN(MAX_TIMER_COUNT, call_index);
+    TEST_ASSERT_NOT_NULL(metadata);
+    captured_timers[call_index] = (CapturedTimer_t){
+        .callback = callback,
+        .metadata = metadata,
+    };
+    return &captured_timers[call_index];
+}
+
+static void expect_timer_start(uint32_t duration, uint8_t index) {
+    create_and_start_timer_ExpectAndReturn(
+        duration, scheduler_callback, NULL, &captured_timers[index]
+    );
+    // The controller allocates metadata internally; capture its actual address.
+    create_and_start_timer_IgnoreArg_info();
+}
+
+static void expire_timer(uint8_t index) {
+    CapturedTimer_t timer = captured_timers[index];
+    TEST_ASSERT_NOT_NULL(timer.callback);
+    TEST_ASSERT_NOT_NULL(timer.metadata);
+    captured_timers[index].metadata = NULL;
+    timer.callback(timer.metadata);
+}
+
+void setUp(void) {
+    Mocktimer_Init();
+    memset(captured_timers, 0, sizeof(captured_timers));
+    create_and_start_timer_AddCallback(capture_timer);
+}
+
+void tearDown(void) {
+    if (TEST_PROTECT()) {
+        Mocktimer_Verify();
+    }
+    Mocktimer_Destroy();
+}
 
 void serializes_controller_state() {
     ControllerState_t test_controller;
@@ -234,35 +269,16 @@ void buttons_press_properly() {
     button.value_x = SWITCH_A;
     button.duration_ms = 500;
 
-    // initialize spy
-    void *random_info = (void *)5000;
-    void *random_handle = (void *)5001;
-
-    StartTimerArgs_t args[1] = { 0 };
-    StartTimerArgs_t expected_args = {
-        .duration = button.duration_ms,
-        .cb = scheduler_callback,
-        .info = random_info,
-    };
-
-    void** returns[] = { random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button.duration_ms, 0);
 
     TEST_ASSERT_TRUE(press_button(&controller, &button));
-
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
-    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
 
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
 
     // Simulate a callback after 500ms
-    AppTimerHandle_t cancelled_timers[1] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
@@ -274,22 +290,21 @@ void failed_timer_creation_does_not_leak_metadata() {
         .value_x = SWITCH_A,
         .duration_ms = 500,
     };
-    StartTimerArgs_t args[MAX_TIMER_COUNT] = {0};
-    AppTimerHandle_t returns[MAX_TIMER_COUNT] = {0};
-
     TEST_ASSERT_TRUE(init_controller(&controller));
 
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    // Use CMock's queued return values instead of capturing successful timers.
+    create_and_start_timer_AddCallback(NULL);
 
     for (uint8_t attempt = 0; attempt < MAX_TIMER_COUNT; attempt++) {
+        create_and_start_timer_ExpectAndReturn(
+            button.duration_ms, scheduler_callback, NULL, NULL
+        );
+        create_and_start_timer_IgnoreArg_info();
         TEST_ASSERT_TRUE(press_button(&controller, &button));
         TEST_ASSERT_NULL(controller.timer_handles[0]);
 
         release_button(&controller, &button);
     }
-
-    TEST_ASSERT_EQUAL_UINT32(MAX_TIMER_COUNT, start_timer_spy.call_count);
 }
 
 void hat_buttons_press_properly() {
@@ -307,31 +322,16 @@ void hat_buttons_press_properly() {
     button.value_x = HAT_BOTTOM;
     button.duration_ms = 500;
 
-    // initialize spy
-    void *random_info = (void *)5000;
-    void *random_handle = (void *)5001;
-
-    StartTimerArgs_t args[1] = { 0 };
-
-    void** returns[] = { random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button.duration_ms, 0);
 
     TEST_ASSERT_TRUE(press_button(&controller, &button));
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
-
-    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
-    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
 
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
 
     // Simulate a callback after 500ms
-    AppTimerHandle_t cancelled_timers[1] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
-    TEST_ASSERT_TRUE(cancelled_timers[0] == random_handle);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
@@ -352,30 +352,16 @@ void stick_buttons_press_properly() {
     button.value_y = STICK_MAX;
     button.duration_ms = 500;
 
-    // initialize spy
-    void *random_info = (void *)5000;
-    void *random_handle = (void *)5001;
-
-    StartTimerArgs_t args[1] = { 0 };
-
-    void** returns[] = { random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button.duration_ms, 0);
 
     TEST_ASSERT_TRUE(press_button(&controller, &button));
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
-
-    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
-    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
 
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
 
     // Simulate a callback after 500ms
-    AppTimerHandle_t cancelled_timers[1] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
@@ -401,40 +387,28 @@ void multiple_button_presses_different() {
     button2.value_x = SWITCH_A;
     button2.duration_ms = 500;
 
-    // initialize spy
-    void *random_info = (void *)5000;
-    void *random_handle = (void *)5001;
-
-    StartTimerArgs_t args[2] = {0, 0};
-
-    void** returns[] = { random_handle, random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button.duration_ms, 0);
+    expect_timer_start(button2.duration_ms, 1);
 
     TEST_ASSERT_TRUE(press_button(&controller, &button));
     TEST_ASSERT_TRUE(press_button(&controller, &button2));
-
-    // 2 timers created
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 2);
 
     // Assert both buttons are pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
     // Simulate a callback after 500ms
-    AppTimerHandle_t cancelled_timers[2] = {0, 0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[1]);
+    expire_timer(1);
 
-    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
-    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
-
-    scheduler_callback(args[1].info);
-    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
 
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 2);
+    // The stick's timer expires after 1000ms.
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
 }
 
 void multiple_button_presses_same() {
@@ -457,39 +431,23 @@ void multiple_button_presses_same() {
     button2.value_x = SWITCH_A;
     button2.duration_ms = 500;
 
-    StartTimerArgs_t args[1] = {0};
-
-    void *random_handle = (void *)1000;
-    void** returns[] = { random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button1.duration_ms, 0);
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
-    AppTimerHandle_t timer_data_args[1];
-    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
-
-    ChangeTimerDurationArgs_t change_duration_args[1];
-    change_timer_duration_spy.call_args = change_duration_args;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    change_timer_duration_Expect(&captured_timers[0], button2.duration_ms);
 
     press_button(&controller, &button2);
 
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
-    TEST_ASSERT_TRUE(change_timer_duration_spy.call_count == 1);
-    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
-    TEST_ASSERT_TRUE(change_duration_args[0].handle == random_handle);
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
 
-    AppTimerHandle_t canceled_handles[1] = { 0 }; 
-    cancel_timer_spy.call_args  = canceled_handles;
-    scheduler_callback(args[0].info);
-
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(canceled_handles[0] == random_handle);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
 }
 
 void multiple_button_presses_hat() {
@@ -511,40 +469,25 @@ void multiple_button_presses_hat() {
     button2.value_x = HAT_RIGHT;
     button2.duration_ms = 600;
 
-    StartTimerArgs_t args[1] = { 0 };
-
-    void *left_timer_handle = (void *)1000;
-    void** returns[] = { left_timer_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button1.duration_ms, 0);
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
-    AppTimerHandle_t timer_data_args[1];
-    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
-
-    ChangeTimerDurationArgs_t change_duration_args[1];
-    change_timer_duration_spy.call_args = change_duration_args;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    change_timer_duration_Expect(&captured_timers[0], button2.duration_ms);
 
     press_button(&controller, &button2);
-
-    TEST_ASSERT_TRUE(change_duration_args[0].handle == left_timer_handle);
-    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button1));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
-    AppTimerHandle_t canceled_handles[1] = { 0 }; 
-    cancel_timer_spy.call_args = canceled_handles;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(canceled_handles[0] == left_timer_handle);
 }
 
 // back-to-back stick updates modify the same timer instead of
@@ -568,42 +511,27 @@ void multiple_button_presses_l_stick() {
 
     button2.op = LSTICK;
     button2.value_x = STICK_MAX;
-    button1.value_y = STICK_CENTER;
+    button2.value_y = STICK_CENTER;
     button2.duration_ms = 600;
 
-    StartTimerArgs_t args[1] = { 0 };
-
-    void *left_timer_handle = (void *)1000;
-    void** returns[] = { left_timer_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button1.duration_ms, 0);
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
-    AppTimerHandle_t timer_data_args[1];
-    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
-
-    ChangeTimerDurationArgs_t change_duration_args[1];
-    change_timer_duration_spy.call_args = change_duration_args;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    change_timer_duration_Expect(&captured_timers[0], button2.duration_ms);
 
     press_button(&controller, &button2);
 
-    TEST_ASSERT_TRUE(change_duration_args[0].handle == left_timer_handle);
-    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
-
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
-    AppTimerHandle_t canceled_handles[1] = { 0 }; 
-    cancel_timer_spy.call_args = canceled_handles;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(canceled_handles[0] == left_timer_handle);
 }
 
 
@@ -625,42 +553,27 @@ void multiple_button_presses_r_stick() {
 
     button2.op = RSTICK;
     button2.value_x = STICK_MAX;
-    button1.value_y = STICK_CENTER;
+    button2.value_y = STICK_CENTER;
     button2.duration_ms = 600;
 
-    StartTimerArgs_t args[1] = { 0 };
-
-    void *left_timer_handle = (void *)1000;
-    void** returns[] = { left_timer_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button1.duration_ms, 0);
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
-    AppTimerHandle_t timer_data_args[1];
-    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
-
-    ChangeTimerDurationArgs_t change_duration_args[1];
-    change_timer_duration_spy.call_args = change_duration_args;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    change_timer_duration_Expect(&captured_timers[0], button2.duration_ms);
 
     press_button(&controller, &button2);
 
-    TEST_ASSERT_TRUE(change_duration_args[0].handle == left_timer_handle);
-    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button2.duration_ms);
-
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
-    AppTimerHandle_t canceled_handles[1] = { 0 }; 
-    cancel_timer_spy.call_args = canceled_handles;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(canceled_handles[0] == left_timer_handle);
 }
 
 void multiple_button_presses_same_one_different_interleave() {
@@ -688,58 +601,38 @@ void multiple_button_presses_same_one_different_interleave() {
     button3.value_x = SWITCH_A;
     button3.duration_ms = 500;
 
-    StartTimerArgs_t args[2] = {0, 0};
-
-    void *a_handle = (void *)1000;
-    void *b_handle = (void *)1001;
-    void** returns[] = { a_handle, b_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button1.duration_ms, 0);
+    expect_timer_start(button2.duration_ms, 1);
 
     press_button(&controller, &button1);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
 
-    AppTimerHandle_t timer_data_args[1];
-    TimerMetadata_t *get_timer_returns[1] = { args[0].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
-
-    ChangeTimerDurationArgs_t change_duration_args[1];
-    change_timer_duration_spy.call_args = change_duration_args;
-
     press_button(&controller, &button2);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    change_timer_duration_Expect(&captured_timers[0], button3.duration_ms);
     press_button(&controller, &button3);
 
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button1));
-    TEST_ASSERT_TRUE(change_timer_duration_spy.call_count == 1);
-    TEST_ASSERT_TRUE(change_duration_args[0].duration_ms == button3.duration_ms);
-    TEST_ASSERT_TRUE(change_duration_args[0].handle == a_handle);
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 2);
 
-    AppTimerHandle_t canceled_handles[2] = { 0, 0 }; 
-    cancel_timer_spy.call_args  = canceled_handles;
-    scheduler_callback(args[0].info);
-    scheduler_callback(args[1].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button1));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &button2));
 
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 2);
-    TEST_ASSERT_TRUE(canceled_handles[0] == a_handle);
-    TEST_ASSERT_TRUE(canceled_handles[1] == b_handle);
+    cancel_timer_Expect(&captured_timers[1]);
+    expire_timer(1);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &button2));
 }
 
 void can_press_all_buttons() {
-    StartTimerArgs_t start_timer_args[17] = {0};
-    void *start_timer_returns[17] = {0};
-
-    for (uintptr_t i = 0; i < 17; i++) {
-        start_timer_returns[i] = (void *)(i + 1);
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        expect_timer_start(500, i);
     }
-
-    start_timer_spy.call_args = start_timer_args;
-    start_timer_spy.returns = start_timer_returns;
 
     JoystickButtonState_t buttons[17] = {
         {
@@ -836,32 +729,18 @@ void can_press_all_buttons() {
 
     TEST_ASSERT_TRUE(press_button(&controller, &buttons[14]));
 
-    AppTimerHandle_t get_timer_args[2] = {0};
-    TimerMetadata_t *l_stick_scan_returns[] = { start_timer_args[0].info };
-    get_timer_data_spy.call_args = get_timer_args;
-    get_timer_data_spy.returns = l_stick_scan_returns;
     TEST_ASSERT_TRUE(press_button(&controller, &buttons[15]));
-
-    TimerMetadata_t *r_stick_scan_returns[] = {
-        start_timer_args[0].info,
-        start_timer_args[1].info,
-    };
-    get_timer_data_spy.call_count = 0;
-    get_timer_data_spy.returns = r_stick_scan_returns;
     TEST_ASSERT_TRUE(press_button(&controller, &buttons[16]));
 
     TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 14));
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 17);
 
     for (int i = 0; i < 17; i++) {
         TEST_ASSERT_TRUE(is_button_pressed(&controller, &buttons[i]));
     }
 
-    AppTimerHandle_t canceled_handles[17] = {0};
-    cancel_timer_spy.call_args = canceled_handles;
-
     for (int i = 0; i < 17; i++) {
-        scheduler_callback(start_timer_args[i].info);
+        cancel_timer_Expect(&captured_timers[i]);
+        expire_timer(i);
     }
 
     for (int i = 0; i < 17; i++) {
@@ -882,34 +761,21 @@ void raw_updates_cancel_timers() {
     stick1.value_x = STICK_MIN;
     stick1.value_y = STICK_MAX;
 
-    void *timer_handle =  (void *)1000;
-    void **timer_returns[] = { timer_handle };
-    StartTimerArgs_t args[1] = {0};
-    
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = timer_returns;
+    expect_timer_start(stick1.duration_ms, 0);
 
     TEST_ASSERT_TRUE(press_button(&controller, &stick1));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick1));
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
 
     stick2.op = LSTICK;
     stick2.value_x = 100;
     stick2.value_y = 50;
 
-    AppTimerHandle_t cancel_args[] = { 0 };
-    cancel_timer_spy.call_args = cancel_args;
-
-    AppTimerHandle_t get_timer_args[1] = { 0 };
-    TimerMetadata_t *get_timer_returns[] = { args[0].info };
-
-    get_timer_data_spy.call_args = get_timer_args;
-    get_timer_data_spy.returns = get_timer_returns;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    cancel_timer_Expect(&captured_timers[0]);
 
     update_sticks_raw(&controller, 100, 50, LSTICK);
-
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(cancel_args[0] == timer_handle);
 
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
     TEST_ASSERT_TRUE(controller.curr_state.LX == 100);
@@ -926,35 +792,28 @@ void raw_stick_updates_cancel_only_stick() {
     stick1.duration_ms = 500;
     stick1.value_x = SWITCH_L;
 
-    void *timer_handle =  (void *)1000;
-    void **timer_returns[] = { timer_handle };
-    StartTimerArgs_t args[1] = {0};
-    
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = timer_returns;
+    expect_timer_start(stick1.duration_ms, 0);
 
     TEST_ASSERT_TRUE(press_button(&controller, &stick1));
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick1));
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
 
     stick2.op = RSTICK;
     stick2.value_x = 100;
     stick2.value_y = 50;
 
-    AppTimerHandle_t get_timer_args[1] = { 0 };
-    TimerMetadata_t *get_timer_returns[] = { args[0].info };
-
-    get_timer_data_spy.call_args = get_timer_args;
-    get_timer_data_spy.returns = get_timer_returns;
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
 
     update_sticks_raw(&controller, 100, 50, RSTICK);
 
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 0);
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick1));
 
-    AppTimerHandle_t cancelled_timers[1] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
+    TEST_ASSERT_FALSE(is_button_pressed(&controller, &stick1));
+    TEST_ASSERT_TRUE(is_button_pressed(&controller, &stick2));
 }
 // Timers are created properly and API is handled correctly
 // Resetting controller means all timers are cancelled
@@ -1043,8 +902,6 @@ void deg_mag_updates_properly() {
     update_sticks_deg_mag_raw(&controller, 30, -.5, RSTICK);
     TEST_ASSERT_TRUE(controller.curr_state.RY == 96);
     TEST_ASSERT_TRUE(controller.curr_state.RX == 73);
-
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 0);
 }
 
 void full_magnitude_near_positive_axes_does_not_overflow() {
@@ -1078,35 +935,16 @@ void deg_mag_stick_press_properly() {
     button.op = LSTICK;
     button.duration_ms = 500;
 
-    // initialize spy
-    void *random_info = (void *)5000;
-    void *random_handle = (void *)5001;
-
-    StartTimerArgs_t args[1] = { 0 };
-    StartTimerArgs_t expected_args = {
-        .duration = button.duration_ms,
-        .cb = scheduler_callback,
-        .info = random_info,
-    };
-
-    void** returns[] = { random_handle };
-
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
+    expect_timer_start(button.duration_ms, 0);
 
     update_sticks_deg_mag(&controller, 90, 1, LSTICK, 500);
-
-    TEST_ASSERT_TRUE(start_timer_spy.call_count == 1);
-    TEST_ASSERT_TRUE(args[0].duration == button.duration_ms);
-    TEST_ASSERT_TRUE(args[0].cb == scheduler_callback);
 
     // Assert button is pressed. Must be consistent with other functions
     TEST_ASSERT_TRUE(is_button_pressed(&controller, &button));
 
     // Simulate a callback after 500ms
-    AppTimerHandle_t cancelled_timers[1] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
-    scheduler_callback(args[0].info);
+    cancel_timer_Expect(&captured_timers[0]);
+    expire_timer(0);
 
     TEST_ASSERT_FALSE(is_button_pressed(&controller, &button));
 }
@@ -1120,27 +958,25 @@ void resets_controller() {
     ControllerState_t controller;
     TEST_ASSERT_TRUE(init_controller(&controller));
 
-    void *a_handle = (void *)1000;
-    void *b_handle = (void *)1001;
-    void *x_handle = (void *)1002;
-    void **returns[] = { a_handle, b_handle, x_handle };
-
-    StartTimerArgs_t args[3] = { 0 };
-    start_timer_spy.call_args = args;
-    start_timer_spy.returns = returns;
-
-    AppTimerHandle_t cancelled_timers[3] = {0};
-    cancel_timer_spy.call_args = cancelled_timers;
+    for (uint8_t i = 0; i < 3; i++) {
+        expect_timer_start(buttons[i].duration_ms, i);
+    }
 
     TEST_ASSERT_TRUE(press_button_combo(&controller, buttons, 3));
  
-    AppTimerHandle_t timer_data_args[3];
-    TimerMetadata_t *get_timer_returns[3] = { args[0].info, args[1].info, args[2].info };
-    get_timer_data_spy.call_args = timer_data_args;
-    get_timer_data_spy.returns = get_timer_returns;
+    for (uint8_t i = 0; i < 3; i++) {
+        get_timer_metadata_ExpectAndReturn(
+            &captured_timers[i], captured_timers[i].metadata
+        );
+        cancel_timer_Expect(&captured_timers[i]);
+    }
 
     reset_controller(&controller);
-    TEST_ASSERT_TRUE(cancel_timer_spy.call_count == 3);
+    TEST_ASSERT_EQUAL_UINT16(0, controller.curr_state.Button);
+    TEST_ASSERT_TRUE(is_controller_initialized(&controller));
+    for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
+        TEST_ASSERT_NULL(controller.timer_handles[i]);
+    }
 }
 
 int main(void)

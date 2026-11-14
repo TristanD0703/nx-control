@@ -92,6 +92,8 @@ typedef struct {
   */
 int init_controller(ControllerState_t *controller);
 
+void scheduler_callback(TimerMetadata_t *meta);
+
 /**
  * Stops pressing the button and cancels the timer(s) related to this button
  */
