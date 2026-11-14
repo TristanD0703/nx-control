@@ -1,0 +1,8 @@
+:cmock:
+  :plugins:
+    - :ignore
+    - :ignore_arg
+    - :callback
+    - :return_thru_ptr
+    - :array
+  :when_ptr: :smart

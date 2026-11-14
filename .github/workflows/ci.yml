@@ -42,6 +42,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
       - name: Configure host tests
         run: cmake -S tests -B build-test
 
@@ -58,6 +63,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
 
       - name: Install coverage tools
         run: sudo apt-get update && sudo apt-get install --yes gcovr jq

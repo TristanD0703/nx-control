@@ -16,6 +16,10 @@ target_sources(nintendo_switch_controller_host_tests
     ../../src/timer/timer.h
 )
 
+# List dependency headers here when their implementations should be mocked.
+set(HOST_MOCK_HEADERS)
+target_cmock_mocks(nintendo_switch_controller_host_tests ${HOST_MOCK_HEADERS})
+
 add_test(NAME nintendo_switch_controller_host_tests COMMAND nintendo_switch_controller_host_tests)
 
 target_link_libraries(nintendo_switch_controller_host_tests PRIVATE unity m)
