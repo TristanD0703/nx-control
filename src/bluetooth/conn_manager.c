@@ -19,13 +19,7 @@ void init_conn_manager() {
     memset(connection_handles, 0xff, sizeof(connection_handles));
 }
 
-// TODO: Handle GAP events
-// Connect (success)
-// Connect (failure)
-// Disconnect
-// Advertising complete
 // TODO: Device subscribed
-// TODO: Connection updated
 int gap_event_callback(struct ble_gap_event *event, void *arg) {
     char *callback_type_name = "UNKNOWN";
 

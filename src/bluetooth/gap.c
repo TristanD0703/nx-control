@@ -10,13 +10,14 @@
 #include "../app_log.h"
 #include "gap.h"
 #include "conn_manager.h"
+#include "gatt_svr.h"
 
 #define TAG "[GAP]"
 #define BLE_GAP_LE_ROLE_PERIPHERAL 0x00
 #define BLE_GAP_APPEARANCE_GAMEPAD 0x03C4
 
 // static const int32_t ADVERTISING_DURATION_MS = 2000;
-static const char *DEVICE_NAME = "Nint. Sw. Cont.";
+static const char *DEVICE_NAME = "NX_USB_DEVICE";
 
 // Library methods
 void ble_store_config_init(void);
@@ -36,8 +37,6 @@ static struct ble_hs_adv_fields advertising_fields = { 0 };
 static struct ble_gap_adv_params advertising_params = { 0 };
 static struct ble_hs_adv_fields response_fields = { 0 };
 
-// TODO: Configure Bluetooth stack (before doing nimble_port_run())
-// Start nvs storage (could move later if we use nvs elsewhere)
 // Configure callbacks
 // Set device name
 int setup_bluetooth() {
@@ -57,6 +56,7 @@ int setup_bluetooth() {
     ble_hs_cfg.reset_cb = on_stack_reset;
     ble_hs_cfg.sync_cb = on_stack_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+    ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
 
     rc = ble_svc_gap_device_name_set(DEVICE_NAME);
     if (rc != 0) {
@@ -70,7 +70,14 @@ int setup_bluetooth() {
         ESP_LOGE(TAG, "failed to set device appearance, error code: %d", rc);
     }
 
-    // TODO: Also configure GATT when we add that
+    // TODO: Change to accept a controller that the bluetooth stack
+    // can modify/access
+   
+    // Setup GATT services after BLE stack is ready
+    rc = gatt_svc_init();
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Failed to initialize GATT services", rc);
+    }
     return rc;
 }
 
@@ -83,8 +90,6 @@ static void bluetooth_task(void *args) {
     nimble_port_freertos_deinit();
 }
 
-// TODO: Configure Bluetooth stack (after starting nimble port) (on_stack_sync)
-//
 // Discover and configure Bluetooth address 
 // Configure advertising data to be sent
 // Run advertising after configuration
@@ -130,6 +135,8 @@ int run_advertisement(int32_t duration) {
 
     if (rc != BLE_ERR_SUCCESS) {
         APP_LOGE(TAG, "Begin advertising failed with code %d", rc);
+    } else {
+        APP_LOGI(TAG, "BLE Advertising started");
     }
     return rc;
 }
