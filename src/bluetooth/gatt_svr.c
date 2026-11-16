@@ -6,11 +6,18 @@
 
 #include "gatt_svr.h"
 
+#include "controller-state/controller-state.h"
+#include "host/ble_gatt.h"
+#include "host/ble_hs.h"
 #include "host/ble_uuid.h"
+#include "sdkconfig.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "../app_log.h"
+#include <stdint.h>
 
 #define TAG "[GATT_SERVICE]"
+
+static ControllerState_t *connected_controller;
 
 static int controller_state_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                                       struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -57,12 +64,41 @@ static const struct ble_gatt_svc_def gatt_services[] = {
   { 0 }
 };
 
+static uint16_t subscribed_connection_handles[CONFIG_BT_NIMBLE_MAX_CONNECTIONS] = { 0 };
 
 static int controller_state_access_cb(
     uint16_t conn_handle, uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt, void *arg) 
 {
-    return 0; 
+    JoystickState_t state; 
+    serialize_controller_state(connected_controller, &state);
+
+    switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+    {
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+            APP_LOGI(TAG, "characteristic read; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        } else {
+            APP_LOGI(TAG,
+                     "characteristic read by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        if (attr_handle != controller_state_chr_val_handle) {
+            APP_LOGE(TAG, "Controller state attr read called but attr_handle does not match");
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        int rc = os_mbuf_append(ctxt->om, &state, sizeof(JoystickState_t));
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    default:
+    {
+        APP_LOGE(TAG, "Invalid access operation on controller state. op=%d", ctxt->op);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    }
 }
 
 
@@ -116,9 +152,71 @@ void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg) {
     }
 }
 
-int gatt_svc_init(void) {
+static void receive_controller_update(JoystickState_t *new_state) {
+    if (!new_state) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "broadcasting new controller state...");
+    for (uint8_t i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (subscribed_connection_handles[i] != BLE_HS_CONN_HANDLE_NONE) {
+            int rc = ble_gatts_notify(
+                subscribed_connection_handles[i], 
+                controller_state_chr_val_handle
+            );
+
+            if (rc != 0) {
+                ESP_LOGE(TAG, "failed to send controller update, error code: %d conn_handle", rc, subscribed_connection_handles[i]);
+            } else {
+                ESP_LOGI(TAG, "sent controller update conn_handle", rc, subscribed_connection_handles[i]);
+            }
+        }
+    }
+}
+
+void receive_subscribe_event(struct ble_gap_event *event) {
+    // Subscribe or unsusbscribe?
+    if (event->subscribe.attr_handle != controller_state_chr_val_handle) {
+        return;
+    }
+    if (event->subscribe.cur_notify == 1) {
+        // Is it already subscribed?
+        for (uint8_t i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+            if (subscribed_connection_handles[i] == event->subscribe.conn_handle) {
+                return;
+            }
+        }
+
+        // If not, set an empty slot in subscribers list
+        for (uint8_t i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+            if (subscribed_connection_handles[i] == BLE_HS_CONN_HANDLE_NONE) {
+                subscribed_connection_handles[i] = event->subscribe.conn_handle;
+                return;
+            }
+        }
+    } else {
+        // Unsubscribe by marking matching conn handles as unsubscribed
+        for (uint8_t i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+            if (subscribed_connection_handles[i] == event->subscribe.conn_handle) {
+                subscribed_connection_handles[i] = BLE_HS_CONN_HANDLE_NONE;
+            }
+        }
+    }
+    
+}
+int gatt_svc_init(ControllerState_t *controller) {
     /* Local variables */
     int rc = 0;
+    if(!is_controller_initialized(controller)) {
+        rc = 1;
+        APP_LOGE(TAG, "Controller modifiable by the GATT service is not initialized");
+        return rc;
+    }
+
+    memset(subscribed_connection_handles, BLE_HS_CONN_HANDLE_NONE, sizeof(subscribed_connection_handles));
+
+    connected_controller = controller;
+    set_controller_update_cb(connected_controller, receive_controller_update);
 
     /* 1. GATT service initialization */
     ble_svc_gatt_init();

@@ -39,7 +39,7 @@ static struct ble_hs_adv_fields response_fields = { 0 };
 
 // Configure callbacks
 // Set device name
-int setup_bluetooth() {
+int setup_bluetooth(ControllerState_t *connected_controller) {
     int rc = 0;
     ble_store_config_init();
     init_conn_manager();
@@ -74,7 +74,7 @@ int setup_bluetooth() {
     // can modify/access
    
     // Setup GATT services after BLE stack is ready
-    rc = gatt_svc_init();
+    rc = gatt_svc_init(connected_controller);
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to initialize GATT services", rc);
     }
