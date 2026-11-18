@@ -84,44 +84,7 @@ void tud_resume_cb(void)
 
 static void controller_task(void* arg)
 {
-    JoystickButtonState_t buttons_to_press[] = {
-        {
-          .op = HAT,
-          .value_x = HAT_TOP,
-          .value_y = 0,
-          .duration_ms = 100
-        },
-        {
-          .op = HAT,
-          .value_x = HAT_RIGHT,
-          .value_y = 0,
-          .duration_ms = 100
-        },
-        {
-          .op = HAT,
-          .value_x = HAT_BOTTOM,
-          .value_y = 0,
-          .duration_ms = 100
-        },
-        {
-          .op = HAT,
-          .value_x = HAT_LEFT,
-          .value_y = 0,
-          .duration_ms = 100 
-        },
-    };
-    uint8_t curr_button_i = 0;
-    TickType_t last_update = 0; 
-
     while (1) {
-        TickType_t curr_tick = xTaskGetTickCount();
-        if (curr_tick - last_update >= pdMS_TO_TICKS(1000)) {
-            press_button(&universal_controller, &buttons_to_press[curr_button_i]);
-            curr_button_i = (curr_button_i + 1) % 4;
-            last_update = curr_tick;
-            APP_LOGI(TAG, "Updating controller state");
-        }
-
         if (!tud_mounted() || !tud_hid_ready()) {
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;

@@ -1,19 +1,45 @@
+# NX Control
+This firmware allows you to programmatically control the Nintendo Switch over Bluetooth Low Energy using a simple microcontroller that costs <$10 USD.
+All you need is an ESP32-S3, a USB A-C cable, and a computer :)
+
+## Why does this project exist?
+A lot of other solutions require a lot of hardware tinkering and extra components that are hard to get your head around if you don't know what you're doing.
+Additionally, these solutions require your laptop or other computer to be physically connected to the microcontroller, so you cannot move your computer while you
+are executing scripts.
+
+Some other projects attempt to solve this by allowing your computer to act as a bluetooth controller directly to the switch. However, Nintendo likes to change the
+Bluetooth specification a lot, so it's hard to keep up with those changes. One thing that never changes is the USB protocol. Which is why I decided to relay commands
+over USB from Bluetooth Low Energy.
+
+Finally, I could not find a project that, even if the device worked, did not have a good interface for sending commands in a scriptable way (press x button for y amount of time).
+Thus, NX Control was born!
+
+## How to use
+You must have one of these microcontrollers. [This is the one that I use for testing](https://www.amazon.com/DORHEA-Development-Bluetooth-ESP32-S3-DevKit-ESP32-S3-WROOM/dp/B0GBT212KM/ref=sr_1_3?crid=2LWAKUASWBTQ&dib=eyJ2IjoiMSJ9.FVAMjaTuvap9YBbnA1E6kFL0pzvlUb2sOYr2tgQ2chpdLtE5a_fwL0gAI52Hwf5mY9c9BzLcWwBdb4jx3h557ZfIx9e6c-KNspxKWH4-PuGUEoI97CM4lnuUP8kpwMe_vSCiZRw0FzC7q8bwBX8ayusRxR1crlnln58tl9rfEIMgpNfruk1jh7O1lo5y-Pv9sEm5I3VCgZAV0CN61H0roZIJDysasnT032Em49INvzU.6RYBv0BjslBpSiCPQ7XL3r-f7cYKqjeuwZBazOpNfvM&dib_tag=se&keywords=esp32s3&qid=1794972280&sprefix=esp32s3%2Caps%2C147&sr=8-3&th=1). The others I have not verified, but are supported according to the spec sheet/documentation.
+
 | Supported Targets | ESP32-H4 | ESP32-P4 | ESP32-S2 | ESP32-S3 | ESP32-S31 |
 | ----------------- | -------- | -------- | -------- | -------- | --------- |
 
-### Hardware Required
-
-Any ESP board that have USB-OTG supported.
 
 ### Build and Flash
 
-First, set your esp device target. Example:
+To get the code on the device, you'll need to build the code and flash the firmware onto the device.
+First you must install the prerequisite tooling from Espressif in order to interact with the device. Follow [this](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html#installation) guide to install esp-idf
+
+Once you have that installed, you can get started.
+
+> [!NOTE]
+> Depending on your installation, you might have to activate your tooling with `get_idf` before running any idf commands
+
+First open a terminal, clone the Git repository, `cd ./nx-control`, and set your esp target. For example:
 
 ```bash
 idf.py set-target esp32s3
 ```
 
-Next, find your device port in the /dev folder. On Mac you're looking for something like this:
+Next, plug in your device. If you have 2 USB-C ports, flip the device over and make sure you plug in the one that says `COM`
+
+Once its plugged in, find your device port in the /dev folder. On Mac you're looking for something like this:
 
 ```bash
 ls /dev/cu.*
@@ -36,9 +62,14 @@ Finally, build the project and flash it to the board, then run monitor tool to v
 idf.py -p {path_from_above} flash monitor
 ```
 
+You should see a flurry of output. This is normal and means your device booted up!
 (To exit the serial monitor, type `Ctrl-]`.)
 
-This project is still in development. more to come soon.
+If you made it this far without any issues, you successfully flashed the firmware. Yay!!
+Now, you can unplug the device from your computer, and plug it into the switch. Again, if you have 2 USB ports, ensure that the USB cable is plugged into the
+__USB port__ instead of the __COM port__. USB does not work over the COM port!
+
+The device will not do anything, but that's ok! It is awaiting your input over Bluetooth for controller commands. For more information on how to send and execute commands, see the [protocol docs](./docs/protocol.md)
 
 ## Build and Run Tests
 

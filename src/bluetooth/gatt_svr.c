@@ -7,18 +7,26 @@
 #include "gatt_svr.h"
 
 #include "controller-state/controller-state.h"
+#include "host/ble_att.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
+#include "os/os_mbuf.h"
 #include "sdkconfig.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "../app_log.h"
 #include <stdint.h>
 
 #define TAG "[GATT_SERVICE]"
+#define CONTROLLER_RESET 0x00
+#define RELINQUISH_WRITE 0x01
+#define BUTTON_COMMAND 0x02
+#define PROTOCOL_VERSION 0x00
+#define MAX_RECV_LEN 1024
 
 static ControllerState_t *connected_controller;
 
+static int process_write(uint8_t *data, uint16_t len, uint16_t conn_handle);
 static int controller_state_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                                       struct ble_gatt_access_ctxt *ctxt, void *arg);
 
@@ -65,6 +73,7 @@ static const struct ble_gatt_svc_def gatt_services[] = {
 };
 
 static uint16_t subscribed_connection_handles[CONFIG_BT_NIMBLE_MAX_CONNECTIONS] = { 0 };
+static uint16_t writing_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 
 static int controller_state_access_cb(
     uint16_t conn_handle, uint16_t attr_handle,
@@ -106,8 +115,131 @@ static int button_access_cb(
     uint16_t conn_handle, uint16_t attr_handle,
     struct ble_gatt_access_ctxt *ctxt, void *arg) 
 {
+    // Only one connection can be a writer
+    // Maybe we could also have a config for a specific
+    // Bluetooth device id/address?!
+    
+   
+    switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+            APP_LOGI(TAG, "characteristic write; conn_handle=%d attr_handle=%d",
+                     conn_handle, attr_handle);
+        } else {
+            APP_LOGI(TAG,
+                     "characteristic write by nimble stack; attr_handle=%d",
+                     attr_handle);
+        }
+
+        if (attr_handle != button_val_handle) {
+            APP_LOGE(TAG, "Button state attr write called but attr_handle does not match");
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        uint8_t buf[MAX_RECV_LEN];
+        const uint16_t req_len = OS_MBUF_PKTLEN(ctxt->om);
+        if (req_len > MAX_RECV_LEN) {
+            APP_LOGE(TAG, "Requested write exceeded max buffer length");
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+
+        
+        if (os_mbuf_copydata(ctxt->om, 0, req_len, buf) != 0) {
+            APP_LOGE(TAG, "Failed to copy write payload");
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        int rc = process_write(buf, req_len, conn_handle);
+        if (rc != 0) {
+            APP_LOGE(TAG, "Sending button write failure due error code %d", rc);
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        break;
+    default:
+    {
+        APP_LOGE(TAG, "Invalid access operation on controller state. op=%d", ctxt->op);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    }
+
     return 0; 
 }
+
+// Returns underlying error code on non-zero return
+static int process_write(uint8_t *data, uint16_t len, uint16_t conn_handle) {
+    // Data struct: version, then an array with each element being
+    // a type for controller reset (single value), relinquish admin/writer 
+    // permissions (single value), or one for pressing actual buttons (JoystickState_t type)
+    // Relinquishing writing hold should take effect for the rest of the command array
+
+    if (writing_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        writing_conn_handle = conn_handle;
+    }
+
+    // Internal writes (CONN_HANDLE_NONE) are allowed!
+    if (conn_handle != BLE_HS_CONN_HANDLE_NONE && conn_handle != writing_conn_handle) {
+        APP_LOGW(TAG, "An unauthorized connection tried to write to the controller; conn_handle=%d", 
+            conn_handle);
+        return 5;
+    }
+
+    if (len == 0) {
+        return 0;
+    }
+
+    // Version byte (version 0)
+    if (data[0] != PROTOCOL_VERSION) {
+        APP_LOGW(TAG, "Unsupported protocol from client. Expected version %d, got %d", 
+            PROTOCOL_VERSION, data[0]);
+        return 2;
+    }
+
+    // Process each data entry
+    uint16_t data_ptr = 1; 
+    while (data_ptr < len && conn_handle == writing_conn_handle) {
+        uint8_t type = data[data_ptr];
+        data_ptr += sizeof(uint8_t);
+        switch (type) {
+        case CONTROLLER_RESET:
+        {
+            APP_LOGI(TAG, "Got CONTROLLER_RESET");
+            reset_controller(connected_controller);
+            break;
+        }
+        case RELINQUISH_WRITE:
+        {
+            APP_LOGI(TAG, "Got RELINQUISH_WRITE. All further commands will not be processed.");
+            writing_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            return 0;
+        }
+        case BUTTON_COMMAND:
+        {
+            uint16_t remaining_bytes = len - data_ptr; 
+            if (remaining_bytes < sizeof(JoystickButtonState_t)) {
+                APP_LOGE(TAG, "Got BUTTON_COMMAND but not enough remaining bytes in buffer");
+                return 3;
+            }
+
+            JoystickButtonState_t button;
+            memcpy(&button, &data[data_ptr], sizeof(JoystickButtonState_t));
+            press_button(connected_controller, &button);
+            data_ptr += sizeof(JoystickButtonState_t);
+            break;
+        }
+        default:
+        {
+            APP_LOGE(TAG, "Received unsupported command type: %d", type);
+            return 4;
+        }
+        }
+    }
+
+    return 0;
+}
+
+// Joystate 10
+// 12 total bytes
+// curr byte index 2
 
 /*
  *  Handle GATT attribute register events
@@ -202,8 +334,13 @@ void receive_subscribe_event(struct ble_gap_event *event) {
             }
         }
     }
-    
 }
+
+void gatt_handle_disconnect(uint16_t conn_handle) {
+    if (conn_handle == writing_conn_handle)
+        writing_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+}
+
 int gatt_svc_init(ControllerState_t *controller) {
     /* Local variables */
     int rc = 0;
