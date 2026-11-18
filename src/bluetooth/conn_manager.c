@@ -119,6 +119,7 @@ static void handle_disconnect(struct ble_gap_event *event) {
         }
     }
 
+    gatt_handle_disconnect(event->disconnect.conn.conn_handle);
     connection_count--;
 }
 

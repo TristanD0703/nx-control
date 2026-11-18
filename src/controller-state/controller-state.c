@@ -97,9 +97,7 @@ static int release_controller_state(
     return 1;
 }
 
-int release_button(ControllerState_t *controller, JoystickButtonState_t *operation) {
-    release_controller_state(controller, operation);
-
+static int shutdown_timer_by_button_state(ControllerState_t *controller, JoystickButtonState_t *state) {
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         AppTimerHandle_t curr_handle = controller->timer_handles[i];
         if (!curr_handle) {
@@ -107,25 +105,27 @@ int release_button(ControllerState_t *controller, JoystickButtonState_t *operati
         }
 
         TimerInfo_t *info = (TimerInfo_t *)get_timer_metadata(curr_handle);
-        if (
-              info->operation.op == operation->op
-              && (operation->op != BUTTON || operation->value_x == info->operation.value_x)
-            )
-        {
-            APP_LOGI(
-                TAG,
-                "Releasing button. op=%u x=%" PRIu16 " y=%" PRIu16,
-                (unsigned int)info->operation.op,
-                info->operation.value_x,
-                info->operation.value_y
-            );
+        if (info->operation.op == state->op
+              && (state->op != BUTTON || state->value_x == info->operation.value_x)) {
 
-            shutdown_timer(controller, curr_handle, info);
-            return 1;
+              APP_LOGI(
+                  TAG,
+                  "Stopping timer for button. op=%u x=%" PRIu16 " y=%" PRIu16,
+                  (unsigned int)info->operation.op,
+                  info->operation.value_x,
+                  info->operation.value_y
+              );
+
+              shutdown_timer(controller, curr_handle, info);
+              return 1;
         }
     }
+    return 0;
+}
 
-    APP_LOGW(TAG, "Tried to release a button that was not pressed");
+int release_button(ControllerState_t *controller, JoystickButtonState_t *operation) {
+    release_controller_state(controller, operation);
+    shutdown_timer_by_button_state(controller, operation);
     return 0;
 }
 
@@ -347,16 +347,19 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
       controller->curr_state.HAT != HAT_CENTER : 
       is_button_pressed_internal(&controller->curr_state, button);
 
+    set_controller_state(controller, button);
     // Buttons with duration 0 will be pressed indefinitely
     // Passing 0 to creating a timer will cause FreeRTOS to assert
     // and crash.
-    if (button_pressed && button->duration_ms > 0) {
-        modify_timer_by_desired_state(controller, button);
+    if (button->duration_ms > 0) {
+        if (button_pressed) {
+            modify_timer_by_desired_state(controller, button);
+        } else {
+            create_button_timer(controller, button);
+        }
     } else {
-        create_button_timer(controller, button);
+        shutdown_timer_by_button_state(controller, button);
     }
-
-    set_controller_state(controller, button);
 
     return 1;
 }

@@ -108,6 +108,8 @@ int release_button(
 /**
  * Creates an event where the controller will send a button press to the
  * Nintendo Switch based on the specified button type, value, and duration (in ms).
+ * If the duration specified is 0, the button will instead be held until release_button
+ * is called
  *
  * Any subsequent calls to this method while the same button is active make the timer
  * expire that many ms in the future (effectively creating a new timer)

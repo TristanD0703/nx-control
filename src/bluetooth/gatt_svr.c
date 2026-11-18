@@ -7,9 +7,11 @@
 #include "gatt_svr.h"
 
 #include "controller-state/controller-state.h"
+#include "host/ble_att.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
+#include "os/os_mbuf.h"
 #include "sdkconfig.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "../app_log.h"
@@ -20,6 +22,7 @@
 #define RELINQUISH_WRITE 0x01
 #define BUTTON_COMMAND 0x02
 #define PROTOCOL_VERSION 0x00
+#define MAX_RECV_LEN 1024
 
 static ControllerState_t *connected_controller;
 
@@ -133,7 +136,20 @@ static int button_access_cb(
             return BLE_ATT_ERR_UNLIKELY;
         }
 
-        int rc = process_write(ctxt->om->om_data, ctxt->om->om_len, conn_handle);
+        uint8_t buf[MAX_RECV_LEN];
+        const uint16_t req_len = OS_MBUF_PKTLEN(ctxt->om);
+        if (req_len > MAX_RECV_LEN) {
+            APP_LOGE(TAG, "Requested write exceeded max buffer length");
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+
+        
+        if (os_mbuf_copydata(ctxt->om, 0, req_len, buf) != 0) {
+            APP_LOGE(TAG, "Failed to copy write payload");
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        int rc = process_write(buf, req_len, conn_handle);
         if (rc != 0) {
             APP_LOGE(TAG, "Sending button write failure due error code %d", rc);
             return BLE_ATT_ERR_UNLIKELY;
@@ -178,9 +194,6 @@ static int process_write(uint8_t *data, uint16_t len, uint16_t conn_handle) {
         return 2;
     }
 
-    JoystickButtonState_t button_presses[MAX_TIMER_COUNT];
-    uint8_t button_press_count = 0;
-
     // Process each data entry
     uint16_t data_ptr = 1; 
     while (data_ptr < len && conn_handle == writing_conn_handle) {
@@ -196,20 +209,21 @@ static int process_write(uint8_t *data, uint16_t len, uint16_t conn_handle) {
         case RELINQUISH_WRITE:
         {
             APP_LOGI(TAG, "Got RELINQUISH_WRITE. All further commands will not be processed.");
-            conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            writing_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             return 0;
         }
         case BUTTON_COMMAND:
         {
             uint16_t remaining_bytes = len - data_ptr; 
-            APP_LOGI(TAG, "SIZEOF JOYSTICK STATE %d", sizeof(JoystickButtonState_t));
             if (remaining_bytes < sizeof(JoystickButtonState_t)) {
                 APP_LOGE(TAG, "Got BUTTON_COMMAND but not enough remaining bytes in buffer");
                 return 3;
             }
-            memcpy(&button_presses[button_press_count], &data[data_ptr], sizeof(JoystickButtonState_t));
+
+            JoystickButtonState_t button;
+            memcpy(&button, &data[data_ptr], sizeof(JoystickButtonState_t));
+            press_button(connected_controller, &button);
             data_ptr += sizeof(JoystickButtonState_t);
-            button_press_count++;
             break;
         }
         default:
@@ -220,9 +234,6 @@ static int process_write(uint8_t *data, uint16_t len, uint16_t conn_handle) {
         }
     }
 
-    if (button_press_count <= 17 && button_press_count > 0) {
-        return !press_button_combo(connected_controller, button_presses, button_press_count);
-    }
     return 0;
 }
 
@@ -323,6 +334,11 @@ void receive_subscribe_event(struct ble_gap_event *event) {
             }
         }
     }
+}
+
+void gatt_handle_disconnect(uint16_t conn_handle) {
+    if (conn_handle == writing_conn_handle)
+        writing_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 }
 
 int gatt_svc_init(ControllerState_t *controller) {
