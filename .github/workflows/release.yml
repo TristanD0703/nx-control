@@ -1,0 +1,96 @@
+name: Release firmware
+
+on:
+  push:
+    tags: ['**']
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ESP32-S3 firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+
+      - name: Find successful CI run for tagged commit
+        id: ci
+        run: |
+          commit=$(git rev-parse HEAD)
+          for attempt in {1..120}; do
+            runs=$(gh run list --workflow ci.yml --commit "$commit" --event push \
+              --limit 100 --json databaseId,status,conclusion)
+            run=$(jq -c '
+              [.[] | select(.conclusion == "success")][0] //
+              [.[] | select(.status != "completed")][0] //
+              .[0] // empty
+            ' <<< "$runs")
+
+            if [[ -n "$run" ]]; then
+              run_id=$(jq -r '.databaseId' <<< "$run")
+              if [[ $(jq -r '.status' <<< "$run") == completed ]]; then
+                conclusion=$(jq -r '.conclusion' <<< "$run")
+                if [[ "$conclusion" != success ]]; then
+                  echo "::error::CI run $run_id for $commit finished with $conclusion. Re-run CI successfully, then re-run this release workflow."
+                  exit 1
+                fi
+                echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            elif (( attempt >= 20 )); then
+              echo "::error::No CI push run found for $commit. Push this commit to main so CI can build it, then re-run this release workflow."
+              exit 1
+            fi
+
+            echo "Waiting for CI for $commit (attempt $attempt/120)."
+            sleep 15
+          done
+
+          echo "::error::Timed out waiting for CI for $commit. Re-run this release workflow after CI succeeds."
+          exit 1
+
+      - name: Download firmware bundle
+        env:
+          CI_RUN_ID: ${{ steps.ci.outputs.run-id }}
+        run: |
+          if ! gh run download "$CI_RUN_ID" --name firmware-esp32s3 --dir firmware; then
+            echo "::error::Could not download firmware-esp32s3 from CI run $CI_RUN_ID. If the artifact is missing or expired, re-run CI for the tagged commit, then re-run this release workflow."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install esptool
+        run: python -m pip install esptool==5.4.0
+
+      - name: Merge flashable firmware
+        working-directory: firmware
+        run: |
+          python -m esptool --chip esp32s3 merge-bin --format raw --target-offset 0x0 \
+            --output nx-control-esp32s3.bin @flash_args
+
+      - name: Publish GitHub Release
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            gh release create "$TAG_NAME" --verify-tag --draft --title "$TAG_NAME" \
+              --generate-notes \
+              --notes 'Download nx-control-esp32s3.bin and flash it to an ESP32-S3 at address 0x0. The image includes the bootloader, partition table, and application.'
+          fi
+          gh release upload "$TAG_NAME" firmware/nx-control-esp32s3.bin --clobber
+          gh release edit "$TAG_NAME" --draft=false
