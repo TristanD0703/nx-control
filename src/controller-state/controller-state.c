@@ -78,6 +78,10 @@ static int release_controller_state(
         }
     }
 
+    if (controller->on_update) {
+        controller->on_update(state);
+    }
+
     APP_LOGI(
         TAG,
         "Controller state update -- buttons=0x%04" PRIx16 " lx=%" PRIu8 " ly=%" PRIu8
@@ -248,6 +252,10 @@ static void set_controller_state(
         }
     }
 
+    if (controller->on_update) {
+        controller->on_update(&controller->curr_state);
+    }
+
     APP_LOGI(
         TAG,
         "Controller state update -- buttons=0x%04" PRIx16 " lx=%" PRIu8 " ly=%" PRIu8
@@ -371,6 +379,8 @@ void reset_controller(ControllerState_t *controller) {
         return;
     }
 
+    ControllerUpdateCb_t prev_cb = controller->on_update;
+
     for (uint8_t i = 0; i < MAX_TIMER_COUNT; i++) {
         AppTimerHandle_t curr_timer = controller->timer_handles[i];
         if (!curr_timer) {  
@@ -382,6 +392,10 @@ void reset_controller(ControllerState_t *controller) {
     }
 
     init_controller(controller);
+    controller->on_update = prev_cb;
+    if (controller->on_update) {
+        controller->on_update(&controller->curr_state);
+    }
 }
 
 void update_sticks_raw(
@@ -422,7 +436,10 @@ void update_sticks_raw(
         }
         default: return;
     }
-        
+
+    if (controller->on_update) {
+        controller->on_update(&controller->curr_state);
+    }
 }
 
 
@@ -492,4 +509,8 @@ void update_sticks_deg_mag(
   */
 void serialize_controller_state(const ControllerState_t *controller, JoystickState_t *buffer) {
   *buffer = controller->curr_state;
+}
+
+void set_controller_update_cb(ControllerState_t *controller, ControllerUpdateCb_t cb) {
+  controller->on_update = cb;
 }

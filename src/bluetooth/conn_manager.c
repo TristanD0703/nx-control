@@ -2,6 +2,7 @@
 #include "../app_log.h"
 #include "gap.h"
 #include "host/ble_hs.h"
+#include "./gatt_svr.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -19,13 +20,7 @@ void init_conn_manager() {
     memset(connection_handles, 0xff, sizeof(connection_handles));
 }
 
-// TODO: Handle GAP events
-// Connect (success)
-// Connect (failure)
-// Disconnect
-// Advertising complete
 // TODO: Device subscribed
-// TODO: Connection updated
 int gap_event_callback(struct ble_gap_event *event, void *arg) {
     char *callback_type_name = "UNKNOWN";
 
@@ -50,6 +45,34 @@ int gap_event_callback(struct ble_gap_event *event, void *arg) {
     {
         callback_type_name = "ADV_COMPLETE";
         break; 
+    }
+    case BLE_GAP_EVENT_SUBSCRIBE:
+    {
+        callback_type_name = "SUBSCRIBE";
+        ESP_LOGI(TAG,
+         "connection subscribed; conn_handle=%d attr_handle=%d "
+         "reason=%d prevn=%d curn=%d previ=%d curi=%d",
+         event->subscribe.conn_handle, event->subscribe.attr_handle,
+         event->subscribe.reason, event->subscribe.prev_notify,
+         event->subscribe.cur_notify, event->subscribe.prev_indicate,
+         event->subscribe.cur_indicate);
+
+
+        receive_subscribe_event(event);
+        break;
+    }
+    case BLE_GAP_EVENT_NOTIFY_TX:
+    {
+        if ((event->notify_tx.status != 0) &&
+            (event->notify_tx.status != BLE_HS_EDONE)) {
+            /* Print notification info on error */
+            APP_LOGE(TAG,
+                     "notify transmit failure! conn_handle=%d attr_handle=%d "
+                     "status=%d is_indication=%d",
+                     event->notify_tx.conn_handle, event->notify_tx.attr_handle,
+                     event->notify_tx.status, event->notify_tx.indication);
+        }
+        callback_type_name = "NOTIFY_TX";
     }
     }
 

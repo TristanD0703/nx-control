@@ -10,6 +10,13 @@ typedef struct {
 } CapturedTimer_t;
 
 static CapturedTimer_t captured_timers[MAX_TIMER_COUNT];
+static uint32_t controller_update_count;
+static JoystickState_t last_controller_update;
+
+static void capture_controller_update(JoystickState_t *state) {
+    controller_update_count++;
+    last_controller_update = *state;
+}
 
 static AppTimerHandle_t capture_timer(
     uint32_t duration,
@@ -46,6 +53,8 @@ static void expire_timer(uint8_t index) {
 void setUp(void) {
     Mocktimer_Init();
     memset(captured_timers, 0, sizeof(captured_timers));
+    controller_update_count = 0;
+    memset(&last_controller_update, 0, sizeof(last_controller_update));
     create_and_start_timer_AddCallback(capture_timer);
 }
 
@@ -92,6 +101,19 @@ void initializes_controller() {
 
     int is_equal = memcmp(&state, &expected, sizeof(JoystickState_t)) == 0;
     TEST_ASSERT_TRUE(is_equal);
+}
+
+void initialization_discards_previous_callback() {
+    ControllerState_t controller;
+    memset(&controller, 0xa5, sizeof(controller));
+    TEST_ASSERT_TRUE(init_controller(&controller));
+    set_controller_update_cb(&controller, capture_controller_update);
+
+    TEST_ASSERT_TRUE(init_controller(&controller));
+
+    TEST_ASSERT_TRUE(is_controller_initialized(&controller));
+    TEST_ASSERT_TRUE(controller.on_update == NULL);
+    TEST_ASSERT_EQUAL_UINT32(0, controller_update_count);
 }
 
 void correctly_determines_button_presses() {
@@ -979,11 +1001,49 @@ void resets_controller() {
     }
 }
 
+void reset_preserves_callback_and_notifies() {
+    ControllerState_t controller;
+    TEST_ASSERT_TRUE(init_controller(&controller));
+    JoystickButtonState_t button = {
+        .op = BUTTON,
+        .value_x = SWITCH_A,
+        .duration_ms = 500,
+    };
+    expect_timer_start(button.duration_ms, 0);
+    TEST_ASSERT_TRUE(press_button(&controller, &button));
+    set_controller_update_cb(&controller, capture_controller_update);
+
+    get_timer_metadata_ExpectAndReturn(
+        &captured_timers[0], captured_timers[0].metadata
+    );
+    cancel_timer_Expect(&captured_timers[0]);
+    reset_controller(&controller);
+
+    TEST_ASSERT_TRUE(is_controller_initialized(&controller));
+    TEST_ASSERT_TRUE(controller.on_update == capture_controller_update);
+    TEST_ASSERT_EQUAL_UINT32(1, controller_update_count);
+    TEST_ASSERT_EQUAL_UINT16(0, last_controller_update.Button);
+    TEST_ASSERT_EQUAL_UINT8(HAT_CENTER, last_controller_update.HAT);
+    TEST_ASSERT_EQUAL_UINT8(STICK_CENTER, last_controller_update.LX);
+    TEST_ASSERT_EQUAL_UINT8(STICK_CENTER, last_controller_update.LY);
+    TEST_ASSERT_EQUAL_UINT8(STICK_CENTER, last_controller_update.RX);
+    TEST_ASSERT_EQUAL_UINT8(STICK_CENTER, last_controller_update.RY);
+    TEST_ASSERT_EQUAL_MEMORY(
+        &controller.curr_state, &last_controller_update, sizeof(JoystickState_t)
+    );
+
+    update_sticks_raw(&controller, STICK_MIN, STICK_MAX, LSTICK);
+    TEST_ASSERT_EQUAL_UINT32(2, controller_update_count);
+    TEST_ASSERT_EQUAL_UINT8(STICK_MIN, last_controller_update.LX);
+    TEST_ASSERT_EQUAL_UINT8(STICK_MAX, last_controller_update.LY);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(serializes_controller_state);
     RUN_TEST(initializes_controller);
+    RUN_TEST(initialization_discards_previous_callback);
     RUN_TEST(correctly_determines_button_presses);
     RUN_TEST(buttons_press_properly);
     RUN_TEST(failed_timer_creation_does_not_leak_metadata);
@@ -1002,5 +1062,6 @@ int main(void)
     RUN_TEST(full_magnitude_near_positive_axes_does_not_overflow);
     RUN_TEST(deg_mag_stick_press_properly);
     RUN_TEST(resets_controller);
+    RUN_TEST(reset_preserves_callback_and_notifies);
     return UNITY_END();
 }

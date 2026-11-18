@@ -24,6 +24,7 @@
 #define APP_BUTTON (GPIO_NUM_0)
 
 static const char *TAG = "[nintendo-switch-usb-controller]";
+ControllerState_t universal_controller;
 
 // TODO: Refactor all of this usb stuff into its own thing
 static bool suspended = false;
@@ -83,9 +84,6 @@ void tud_resume_cb(void)
 
 static void controller_task(void* arg)
 {
-    ControllerState_t controller;
-    init_controller(&controller);
-
     JoystickButtonState_t buttons_to_press[] = {
         {
           .op = HAT,
@@ -118,7 +116,7 @@ static void controller_task(void* arg)
     while (1) {
         TickType_t curr_tick = xTaskGetTickCount();
         if (curr_tick - last_update >= pdMS_TO_TICKS(1000)) {
-            press_button(&controller, &buttons_to_press[curr_button_i]);
+            press_button(&universal_controller, &buttons_to_press[curr_button_i]);
             curr_button_i = (curr_button_i + 1) % 4;
             last_update = curr_tick;
             APP_LOGI(TAG, "Updating controller state");
@@ -130,7 +128,7 @@ static void controller_task(void* arg)
         }
         
         JoystickState_t curr_state;
-        serialize_controller_state(&controller, &curr_state);
+        serialize_controller_state(&universal_controller, &curr_state);
         tud_hid_report(0, &curr_state, sizeof(JoystickState_t));
         vTaskDelay(pdMS_TO_TICKS(5));
     }
@@ -174,10 +172,11 @@ void app_main(void)
 
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     APP_LOGI(TAG, "USB initialization DONE");
-   
+  
+    init_controller(&universal_controller);
     xTaskCreate(controller_task, "Controller Task", 4096, NULL, 5, NULL);
 
-    ret = setup_bluetooth();
+    ret = setup_bluetooth(&universal_controller);
     if (ret != 0) {
         APP_LOGE(TAG, "Failed to initialize Bluetooth. code %d", ret);
         return;

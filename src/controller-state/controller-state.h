@@ -70,10 +70,13 @@ typedef struct {
 	uint8_t  VendorSpec;
 } JoystickState_t;
 
+typedef void (*ControllerUpdateCb_t)(JoystickState_t *controller);
+
 typedef struct {
     JoystickState_t curr_state;
     AppTimerHandle_t timer_handles[MAX_TIMER_COUNT];
     uint32_t magic;
+    ControllerUpdateCb_t on_update;
 } ControllerState_t;
 
 typedef struct {
@@ -188,3 +191,10 @@ void update_sticks_deg_mag(
 );
 
 int is_controller_initialized(const ControllerState_t *controller);
+
+/**
+ * When the controller changes any of its state (whether a button
+ * was pressed or released, or was reset), the callback provided 
+ * will be called.
+ */
+void set_controller_update_cb(ControllerState_t *controller, ControllerUpdateCb_t cb);
