@@ -21,7 +21,31 @@ You must have one of these microcontrollers. [This is the one that I use for tes
 | ----------------- | -------- | -------- | -------- | -------- | --------- |
 
 
-### Build and Flash
+### Flash a Release (ESP32-S3)
+
+Download `nx-control-esp32s3.bin` from the **Assets** section of a
+[GitHub Release](https://github.com/TristanD0703/nintendo-switch-usb-controller/releases).
+This image includes the bootloader, partition table, and application, so you can
+flash it directly without installing ESP-IDF or building the project.
+
+Connect the board to your computer using the **COM** port if it has two USB ports.
+Install [esptool](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/)
+and flash the downloaded image:
+
+```bash
+python -m pip install esptool==5.4.0
+python -m esptool --chip esp32s3 --port YOUR_PORT write-flash 0x0 nx-control-esp32s3.bin
+```
+
+Replace `YOUR_PORT` with your board's serial port, such as `/dev/ttyUSB0` on Linux,
+`/dev/cu.usbserial-...` on macOS, or `COM3` on Windows. If you use a graphical
+flasher, select **ESP32-S3** and set the image's flash address to **`0x0`**.
+
+After flashing, connect the board to the Switch using its **USB** port instead of
+the **COM** port. The firmware is then ready for Bluetooth commands described in
+the [protocol docs](./docs/protocol.md).
+
+### Build and Flash from Source
 
 To get the code on the device, you'll need to build the code and flash the firmware onto the device.
 First you must install the prerequisite tooling from Espressif in order to interact with the device. Follow [this](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html#installation) guide to install esp-idf
@@ -70,6 +94,25 @@ Now, you can unplug the device from your computer, and plug it into the switch. 
 __USB port__ instead of the __COM port__. USB does not work over the COM port!
 
 The device will not do anything, but that's ok! It is awaiting your input over Bluetooth for controller commands. For more information on how to send and execute commands, see the [protocol docs](./docs/protocol.md)
+
+### Publishing a Release
+
+The CI workflow uploads a `firmware-esp32s3` bundle containing the firmware build
+outputs. To publish a release, tag a commit that has been pushed to `main`:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow waits for successful CI for that exact commit, downloads
+its firmware bundle, and merges the existing binaries into
+`nx-control-esp32s3.bin`. It then publishes a GitHub Release with the `.bin` as a
+downloadable asset. Re-running the release workflow updates the existing asset.
+
+If the CI artifact is missing or has expired, re-run CI for the tagged commit,
+then re-run the release workflow. The CI run must include the firmware-bundle
+upload step.
 
 ## Build and Run Tests
 
