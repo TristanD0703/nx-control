@@ -347,7 +347,10 @@ int press_button(ControllerState_t *controller, JoystickButtonState_t *button) {
       controller->curr_state.HAT != HAT_CENTER : 
       is_button_pressed_internal(&controller->curr_state, button);
 
-    if (button_pressed) {
+    // Buttons with duration 0 will be pressed indefinitely
+    // Passing 0 to creating a timer will cause FreeRTOS to assert
+    // and crash.
+    if (button_pressed && button->duration_ms > 0) {
         modify_timer_by_desired_state(controller, button);
     } else {
         create_button_timer(controller, button);

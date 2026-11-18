@@ -198,3 +198,4 @@ int is_controller_initialized(const ControllerState_t *controller);
  * will be called.
  */
 void set_controller_update_cb(ControllerState_t *controller, ControllerUpdateCb_t cb);
+
